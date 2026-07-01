@@ -1,0 +1,81 @@
+import { useState } from "react";
+import { Navigate } from "react-router-dom";
+import { AuthError } from "@netlify/identity";
+import { Waves } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/lib/auth";
+
+export function LoginPage() {
+  const { user, login } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  if (user) return <Navigate to="/" replace />;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await login(email, password);
+    } catch (err) {
+      if (err instanceof AuthError) {
+        setError(err.status === 401 ? "Feil e-post eller passord." : err.message);
+      } else {
+        setError("Innlogging feilet. Prøv igjen.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#0b2540] p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="items-center text-center">
+          <Waves className="h-8 w-8 text-[#12a5c9]" />
+          <CardTitle>SEA ROV Inspector</CardTitle>
+          <CardDescription>Logg inn for å registrere eller se inspeksjonsrapporter</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="grid gap-4" onSubmit={handleSubmit}>
+            <div className="grid gap-1.5">
+              <Label htmlFor="email">E-post</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="password">Passord</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Logger inn..." : "Logg inn"}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Ny bruker? Du må inviteres av en administrator for å få tilgang.
+            </p>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,26 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[dev]
+  command = "npm run dev"
+  targetPort = 5173
+  port = 8888
+  publish = "dist"
+  autoLaunch = false
+
+# API routes are served by Functions via each function's own `path` config
+# (see netlify/functions/*.mts). This redirect is a fallback for any function
+# that doesn't declare its own path.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# SPA fallback (React Router client-side routing on direct URL navigation)
+# lives in public/_redirects, NOT here. A catch-all `/*` redirect in this
+# file gets applied by `netlify dev`'s proxy to every request, including
+# Vite's own internal asset/module requests, which breaks the dev server
+# (Vite receives index.html content when it requested a .tsx module). The
+# public/_redirects file only affects the built static output, so it's safe.
