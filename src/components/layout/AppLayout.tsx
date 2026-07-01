@@ -21,7 +21,6 @@ export function AppLayout() {
           <div className="flex items-center gap-2">
             <Waves className="h-5 w-5 text-[#12a5c9]" />
             <span className="font-semibold tracking-wide">SEA ROV</span>
-            <span className="text-xs text-[#12a5c9]">ROV Inspector</span>
           </div>
           <nav className="flex items-center gap-4 text-sm">
             {NAV_ITEMS.map((item) => (
