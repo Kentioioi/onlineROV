@@ -132,8 +132,16 @@ function CategoryDropzone({
   onDrop: (files: File[]) => void;
   onDelete: (image: ReportImage) => void;
 }) {
+  // A plain "image/*" wildcard (rather than an explicit MIME list) is the
+  // standard, most compatible way to get mobile browsers to offer BOTH
+  // "Take Photo" and "Choose from Library" in the native picker - listing
+  // specific types (especially non-standard ones like "image/heic") can
+  // make some mobile browsers narrow or drop that native chooser entirely.
+  // Server-side validation (images-upload.mts) still enforces the real
+  // accepted-type allowlist regardless of what the client offers here.
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: { "image/jpeg": [], "image/png": [], "image/webp": [], "image/heic": [] },
+    accept: { "image/*": [] },
+    multiple: true,
     onDrop: (accepted) => onDrop(accepted),
   });
 

@@ -4,7 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { countPending, onPendingChanged, startAutoSync, syncNow } from "@/offline/syncManager";
 
-export function ConnectivityIndicator() {
+// Rendered in both the desktop header and inside the mobile Sheet trigger
+// area at once (CSS-hidden, not unmounted, per the responsive header
+// pattern) - startAutoSync() is idempotent (guarded in syncManager) so a
+// second mount is harmless.
+export function ConnectivityIndicator({ compact = false }: { compact?: boolean }) {
   const [online, setOnline] = useState(navigator.onLine);
   const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
@@ -35,6 +39,25 @@ export function ConnectivityIndicator() {
     } finally {
       setSyncing(false);
     }
+  }
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={handleSyncNow}
+        disabled={syncing || !online || pending === 0}
+        className="relative flex h-9 w-9 items-center justify-center rounded-md text-white disabled:cursor-default"
+        aria-label="Synkroniseringsstatus"
+      >
+        {online ? <Wifi className="h-4 w-4 text-emerald-400" /> : <WifiOff className="h-4 w-4 text-red-400" />}
+        {pending > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-medium text-[#0b2540]">
+            {pending}
+          </span>
+        )}
+      </button>
+    );
   }
 
   return (

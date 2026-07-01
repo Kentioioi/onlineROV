@@ -53,7 +53,10 @@ export function ReportsListPage() {
         </div>
       ) : query.data && query.data.items.length > 0 ? (
         <>
-          <Table>
+          {/* Desktop/tablet: dense table. Below md, a raw table needs
+              horizontal scrolling that's easy to miss on a phone, so a
+              tappable card list replaces it entirely instead. */}
+          <Table className="hidden md:table">
             <TableHeader>
               <TableRow>
                 <TableHead>Rapport nr.</TableHead>
@@ -95,6 +98,37 @@ export function ReportsListPage() {
               ))}
             </TableBody>
           </Table>
+
+          <div className="grid gap-2 md:hidden">
+            {query.data.items.map((r) => (
+              <Link
+                key={r.id}
+                to={`/reports/${r.id}`}
+                className="block rounded-lg border p-3 active:bg-muted"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">Rapport nr. {r.reportNumber}</span>
+                  {r.pdfBlobKey ? (
+                    <Badge variant="secondary" className="gap-1 text-[10px]">
+                      <FileDown className="h-3 w-3" /> PDF
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px]">
+                      Ingen PDF
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">{r.date}</p>
+                <p className="mt-1 text-sm">
+                  {r.location || "-"}
+                  {r.merdNumber ? ` · ${r.merdNumber}` : ""}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {[r.reason, r.rovOperator].filter(Boolean).join(" · ") || "-"}
+                </p>
+              </Link>
+            ))}
+          </div>
 
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
