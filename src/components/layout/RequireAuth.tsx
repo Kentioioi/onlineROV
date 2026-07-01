@@ -2,7 +2,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 
 export function RequireAuth() {
-  const { user, loading } = useAuth();
+  const { user, loading, pendingAction } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -13,7 +13,10 @@ export function RequireAuth() {
     );
   }
 
-  if (!user) {
+  // A "recovery" callback logs the user in automatically, but they haven't
+  // set a new password yet - force them through /login's SetPasswordForm
+  // before letting them into any protected route.
+  if (!user || pendingAction) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 

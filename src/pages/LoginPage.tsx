@@ -9,13 +9,97 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useAuth } from "@/lib/auth";
 
 export function LoginPage() {
-  const { user, login } = useAuth();
+  const { user, pendingAction, login, acceptInvite, completeRecovery } = useAuth();
+
+  // A pending invite/recovery action always takes priority over the normal
+  // redirect - a "recovery" user is technically logged in but must still
+  // set a new password before entering the app.
+  if (user && !pendingAction) return <Navigate to="/" replace />;
+
+  if (pendingAction) {
+    return <SetPasswordForm mode={pendingAction.type} onSubmit={pendingAction.type === "invite" ? acceptInvite : completeRecovery} />;
+  }
+
+  return <LoginForm login={login} />;
+}
+
+function SetPasswordForm({ mode, onSubmit }: { mode: "invite" | "recovery"; onSubmit: (password: string) => Promise<void> }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (password.length < 8) {
+      setError("Passordet må være minst 8 tegn.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("Passordene er ikke like.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onSubmit(password);
+    } catch (err) {
+      setError(err instanceof AuthError ? err.message : "Noe gikk galt. Prøv igjen.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#0b2540] p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="items-center text-center">
+          <Waves className="h-8 w-8 text-[#12a5c9]" />
+          <CardTitle>{mode === "invite" ? "Velkommen til SEA ROV Inspector" : "Sett nytt passord"}</CardTitle>
+          <CardDescription>
+            {mode === "invite" ? "Sett et passord for å aktivere kontoen din." : "Velg et nytt passord for å fortsette."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="grid gap-4" onSubmit={handleSubmit}>
+            <div className="grid gap-1.5">
+              <Label htmlFor="new-password">Nytt passord</Label>
+              <Input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="confirm-password">Bekreft passord</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+              />
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Lagrer..." : "Aktiver konto"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function LoginForm({ login }: { login: (email: string, password: string) => Promise<void> }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  if (user) return <Navigate to="/" replace />;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

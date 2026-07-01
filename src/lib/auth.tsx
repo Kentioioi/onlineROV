@@ -1,21 +1,32 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import {
+  acceptInvite as identityAcceptInvite,
   getUser,
   handleAuthCallback,
   login as identityLogin,
   logout as identityLogout,
   onAuthChange,
+  updateUser as identityUpdateUser,
   AUTH_EVENTS,
   type User,
 } from "@netlify/identity";
 
 type AuthUser = { id: string; email: string; name?: string };
 
+// A raw invite/recovery link lands the user on this page too (Netlify
+// appends an auth hash to the site's root). Until they set a real password,
+// they're neither "logged in" nor should see the plain login form - the UI
+// must show a dedicated "set your password" step for either case.
+type PendingAction = { type: "invite"; token: string } | { type: "recovery" };
+
 type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
+  pendingAction: PendingAction | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  acceptInvite: (password: string) => Promise<void>;
+  completeRecovery: (password: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -36,14 +47,35 @@ function toAuthUser(u: User): AuthUser {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(DEV_BYPASS ? DEV_USER : null);
   const [loading, setLoading] = useState(!DEV_BYPASS);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   useEffect(() => {
     if (DEV_BYPASS) return;
 
     let unsubscribe: (() => void) | undefined;
     (async () => {
-      await handleAuthCallback().catch(() => undefined);
-      const current = await getUser();
+      const result = await handleAuthCallback().catch(() => null);
+
+      if (result?.type === "invite" && result.token) {
+        // No user yet - must call acceptInvite(token, password) before any
+        // session exists. Do NOT fall through to getUser() below, which
+        // would just report "not logged in" and show the wrong screen.
+        setPendingAction({ type: "invite", token: result.token });
+        setLoading(false);
+        return;
+      }
+
+      if (result?.type === "recovery" && result.user) {
+        // Identity logs the user in on a recovery link, but they haven't
+        // chosen a new password yet - force the reset screen before letting
+        // them into the app with whatever password they forgot.
+        setUser(toAuthUser(result.user));
+        setPendingAction({ type: "recovery" });
+        setLoading(false);
+        return;
+      }
+
+      const current = result?.user ?? (await getUser());
       setUser(current ? toAuthUser(current) : null);
       setLoading(false);
 
@@ -62,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextValue = {
     user,
     loading,
+    pendingAction,
     login: async (email, password) => {
       const u = await identityLogin(email, password);
       setUser(toAuthUser(u));
@@ -69,6 +102,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout: async () => {
       await identityLogout();
       setUser(null);
+    },
+    acceptInvite: async (password) => {
+      if (pendingAction?.type !== "invite") throw new Error("No pending invite");
+      const u = await identityAcceptInvite(pendingAction.token, password);
+      setUser(toAuthUser(u));
+      setPendingAction(null);
+    },
+    completeRecovery: async (password) => {
+      const u = await identityUpdateUser({ password });
+      setUser(toAuthUser(u));
+      setPendingAction(null);
     },
   };
 
