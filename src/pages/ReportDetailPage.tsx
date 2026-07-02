@@ -6,7 +6,7 @@ import { FileDown, Loader2, Pencil, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { generatePdf, getReport, imageUrl, pdfDownloadUrl } from "@/lib/api";
+import { downloadPdf, generatePdf, getReport, imageUrl } from "@/lib/api";
 import { CATEGORY_LABELS, IMAGE_CATEGORIES, INSPECTION_CATEGORIES } from "../../shared/constants";
 
 function DetailRow({ label, value }: { label: string; value: string | null | undefined }) {
@@ -22,6 +22,7 @@ export function ReportDetailPage() {
   const { id } = useParams();
   const queryClient = useQueryClient();
   const [generating, setGenerating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const query = useQuery({ queryKey: ["report", id], queryFn: () => getReport(id!), enabled: !!id });
 
@@ -35,6 +36,17 @@ export function ReportDetailPage() {
     onError: () => toast.error("Kunne ikke generere PDF"),
     onSettled: () => setGenerating(false),
   });
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      await downloadPdf(id!);
+    } catch {
+      toast.error("Kunne ikke laste ned PDF");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   if (query.isLoading || !query.data) {
     return (
@@ -63,11 +75,10 @@ export function ReportDetailPage() {
             </Button>
           </Link>
           {report.pdfBlobKey ? (
-            <a href={pdfDownloadUrl(report.id)}>
-              <Button>
-                <FileDown className="h-4 w-4" /> Last ned PDF
-              </Button>
-            </a>
+            <Button onClick={handleDownload} disabled={downloading}>
+              {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+              Last ned PDF
+            </Button>
           ) : null}
           <Button variant={report.pdfBlobKey ? "outline" : "default"} onClick={() => pdfMutation.mutate()} disabled={generating}>
             {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}

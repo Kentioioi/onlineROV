@@ -18,7 +18,7 @@ import { MerdNumberField } from "@/components/form/MerdNumberField";
 import { InspectionResultsSection, type FormInspectionResult } from "@/components/form/InspectionResultsSection";
 import { ImageUploadSection } from "@/components/form/ImageUploadSection";
 import { MaskebruddDialog } from "@/components/form/MaskebruddDialog";
-import { ApiError, createReport, getReport, updateReport, type ReportDetail } from "@/lib/api";
+import { ApiError, createReport, downloadPdf, generatePdf, getReport, updateReport, type ReportDetail } from "@/lib/api";
 import { queueReportForSync } from "@/offline/syncManager";
 import {
   CHECKED_COMMENT_DEFAULTS,
@@ -178,6 +178,7 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [maskebruddOpen, setMaskebruddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [offlineQueued, setOfflineQueued] = useState(false);
 
   useEffect(() => {
@@ -241,6 +242,32 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
       toast.error("Kunne ikke lagre rapporten. Prøv igjen.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Separate from "Lagre rapport" - saves first if needed, then generates
+  // and immediately downloads the PDF, so filling out a report on-site ends
+  // in an actual downloaded file in one tap rather than a second trip to
+  // the detail page. PDF generation is server-side and needs connectivity,
+  // so an offline-queued report can't produce one yet.
+  async function onGeneratePdf() {
+    const values = getValues();
+    setWarnings(softValidationWarnings(toReportInput(values)));
+    setGeneratingPdf(true);
+    try {
+      const result = await persist();
+      if (result.offline) {
+        toast.error("Rapporten er lagret lokalt (uten nett) - PDF kan genereres når du er tilkoblet igjen.");
+        return;
+      }
+      await generatePdf(result.id);
+      await downloadPdf(result.id);
+      toast.success("PDF generert og lastet ned");
+      navigate(`/reports/${result.id}`);
+    } catch {
+      toast.error("Kunne ikke generere PDF. Prøv igjen.");
+    } finally {
+      setGeneratingPdf(false);
     }
   }
 
@@ -491,8 +518,12 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
       </Accordion>
 
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl justify-end px-4">
-          <Button size="lg" onClick={onSave} disabled={saving}>
+        <div className="mx-auto flex max-w-5xl gap-2 px-4 sm:justify-end">
+          <Button size="lg" variant="outline" className="flex-1 sm:flex-none" onClick={onGeneratePdf} disabled={saving || generatingPdf}>
+            {generatingPdf && <Loader2 className="h-4 w-4 animate-spin" />}
+            Generer PDF
+          </Button>
+          <Button size="lg" className="flex-1 sm:flex-none" onClick={onSave} disabled={saving || generatingPdf}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             Lagre rapport
           </Button>

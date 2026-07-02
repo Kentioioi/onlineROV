@@ -107,6 +107,44 @@ export function pdfDownloadUrl(reportId: string): string {
   return `/api/reports/${reportId}/pdf/download`;
 }
 
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  const match = header?.match(/filename="([^"]+)"/);
+  return match?.[1] ?? fallback;
+}
+
+/**
+ * Downloads the PDF via fetch + blob instead of a raw `<a href>` full-page
+ * navigation. A plain navigation to an authenticated API route is fragile in
+ * an SPA (any hiccup - auth cookie edge case, the SPA fallback redirect
+ * matching before the function route, etc. - lands the browser back on
+ * index.html instead of downloading anything, which is exactly the "just
+ * takes me to the starting page" symptom). Routing the download through the
+ * same fetch() path every other authenticated call already uses avoids that
+ * whole class of failure and never navigates the page at all.
+ */
+export async function downloadPdf(reportId: string): Promise<void> {
+  const res = await fetch(pdfDownloadUrl(reportId));
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      message = (await res.json()).error ?? message;
+    } catch {
+      // non-JSON error body, fall through with generic message
+    }
+    throw new ApiError(res.status, message);
+  }
+  const blob = await res.blob();
+  const filename = filenameFromContentDisposition(res.headers.get("content-disposition"), `rapport-${reportId}.pdf`);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function listFieldOptions(field?: FieldKey): Promise<{ items: FieldOption[] }> {
   const qs = field ? `?field=${encodeURIComponent(field)}` : "";
   return apiFetch(`/api/field-options${qs}`);

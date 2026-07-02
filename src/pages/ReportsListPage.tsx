@@ -1,15 +1,40 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { FileDown, Search } from "lucide-react";
+import { FileDown, Loader2, Search } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { listReports, pdfDownloadUrl, type ReportListFilters } from "@/lib/api";
+import { downloadPdf, listReports, type ReportListFilters } from "@/lib/api";
 
 const PAGE_SIZE = 20;
+
+function DownloadPdfButton({ reportId, size = "icon" }: { reportId: string; size?: "icon" | "sm" }) {
+  const [downloading, setDownloading] = useState(false);
+
+  async function handleClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDownloading(true);
+    try {
+      await downloadPdf(reportId);
+    } catch {
+      toast.error("Kunne ikke laste ned PDF");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <Button variant="ghost" size={size} onClick={handleClick} disabled={downloading} aria-label="Last ned PDF">
+      {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+      {size === "sm" && "PDF"}
+    </Button>
+  );
+}
 
 export function ReportsListPage() {
   const [filters, setFilters] = useState<ReportListFilters>({});
@@ -83,11 +108,7 @@ export function ReportsListPage() {
                   <TableCell>{r.rovOperator || "-"}</TableCell>
                   <TableCell>
                     {r.pdfBlobKey ? (
-                      <a href={pdfDownloadUrl(r.id)} onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon">
-                          <FileDown className="h-4 w-4" />
-                        </Button>
-                      </a>
+                      <DownloadPdfButton reportId={r.id} />
                     ) : (
                       <Badge variant="outline" className="text-[10px]">
                         Ingen PDF
@@ -101,32 +122,28 @@ export function ReportsListPage() {
 
           <div className="grid gap-2 md:hidden">
             {query.data.items.map((r) => (
-              <Link
-                key={r.id}
-                to={`/reports/${r.id}`}
-                className="block rounded-lg border p-3 active:bg-muted"
-              >
-                <div className="flex items-center justify-between gap-2">
+              <div key={r.id} className="relative rounded-lg border p-3 active:bg-muted">
+                <Link to={`/reports/${r.id}`} className="block pr-20">
                   <span className="font-medium">Rapport nr. {r.reportNumber}</span>
+                  <p className="text-sm text-muted-foreground">{r.date}</p>
+                  <p className="mt-1 text-sm">
+                    {r.location || "-"}
+                    {r.merdNumber ? ` · ${r.merdNumber}` : ""}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {[r.reason, r.rovOperator].filter(Boolean).join(" · ") || "-"}
+                  </p>
+                </Link>
+                <div className="absolute top-3 right-3">
                   {r.pdfBlobKey ? (
-                    <Badge variant="secondary" className="gap-1 text-[10px]">
-                      <FileDown className="h-3 w-3" /> PDF
-                    </Badge>
+                    <DownloadPdfButton reportId={r.id} size="sm" />
                   ) : (
                     <Badge variant="outline" className="text-[10px]">
                       Ingen PDF
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">{r.date}</p>
-                <p className="mt-1 text-sm">
-                  {r.location || "-"}
-                  {r.merdNumber ? ` · ${r.merdNumber}` : ""}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {[r.reason, r.rovOperator].filter(Boolean).join(" · ") || "-"}
-                </p>
-              </Link>
+              </div>
             ))}
           </div>
 

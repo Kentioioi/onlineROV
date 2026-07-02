@@ -28,6 +28,13 @@ export default defineConfig({
         // App shell (JS/CSS/HTML) is precached for zero-network launch.
         globPatterns: ['**/*.{js,css,html,woff2,svg,png}'],
         navigateFallback: '/index.html',
+        // Without this, the service worker's SPA-fallback intercepts EVERY
+        // full-page navigation - including a plain <a href="/api/..."> click
+        // - and serves the cached app shell instead of letting the request
+        // reach the network, which looks exactly like "clicking download
+        // just takes me back to the start page". API routes are never SPA
+        // pages, so they must never hit navigateFallback.
+        navigateFallbackDenylist: [/^\/api\//],
         // API GET responses are a safety-net cache only - the real offline
         // data layer is IndexedDB (src/offline/db.ts), not this HTTP cache.
         runtimeCaching: [
