@@ -15,13 +15,18 @@ const COMMENTS_GRAY = "#BFBFBF"; // Kommentar/Avvik content box
 const IMAGES_PEACH = "#F7CAAC"; // Bilder: header bar
 const BORDER = "#7F7F7F";
 
+// Page margins and table widths match the master template's exact XML
+// values (word/document.xml <w:pgMar>/<w:tblGrid>), not eyeballed: A4 with
+// true 1in (72pt) margins on all sides, and every table except the Bilder
+// section sits at ~94% of the content width (8480-8507 of 9026 dxa),
+// not the full page width.
 const styles = StyleSheet.create({
-  page: { padding: 32, paddingBottom: 60, fontSize: 9, fontFamily: "Helvetica", color: "#1a1a1a" },
+  page: { padding: 72, fontSize: 9, fontFamily: "Helvetica", color: "#1a1a1a" },
   logo: { width: 130, marginBottom: 8 },
   title: { fontSize: 16, fontFamily: "Helvetica-Bold", marginBottom: 4 },
   titleRule: { borderBottomWidth: 1, borderBottomColor: "#1a1a1a", marginBottom: 10 },
 
-  table: { borderWidth: 0.5, borderColor: BORDER, marginBottom: 10 },
+  table: { width: "94%", borderWidth: 0.5, borderColor: BORDER, marginBottom: 10 },
   row: { flexDirection: "row", borderBottomWidth: 0.5, borderBottomColor: BORDER },
   rowLast: { flexDirection: "row" },
   cellLabel: {
@@ -35,6 +40,7 @@ const styles = StyleSheet.create({
   cellValueLast: { width: "28%", padding: 4, backgroundColor: VALUE_BLUE },
 
   sectionBar: {
+    width: "94%",
     backgroundColor: HEADER_BLUE,
     padding: 4,
     fontFamily: "Helvetica-Bold",
@@ -42,12 +48,12 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     borderBottomWidth: 0,
   },
-  cageBody: { flexDirection: "row", borderWidth: 0.5, borderColor: BORDER, marginBottom: 10 },
+  cageBody: { width: "94%", flexDirection: "row", borderWidth: 0.5, borderColor: BORDER, marginBottom: 10 },
   cageCol: { width: "50%", backgroundColor: BODY_BLUE, padding: 6 },
   cageColBorder: { borderRightWidth: 0.5, borderRightColor: BORDER },
   cageLine: { marginBottom: 2 },
 
-  resultsHeaderRow: { flexDirection: "row", backgroundColor: RESULTS_HEADER_GRAY, borderWidth: 0.5, borderColor: BORDER, borderTopWidth: 0 },
+  resultsHeaderRow: { width: "94%", flexDirection: "row", backgroundColor: RESULTS_HEADER_GRAY, borderWidth: 0.5, borderColor: BORDER, borderTopWidth: 0 },
   resultHeaderCell: { padding: 4, fontFamily: "Helvetica-Bold", fontSize: 8, borderRightWidth: 0.5, borderRightColor: BORDER },
   resultRow: { flexDirection: "row", backgroundColor: BODY_BLUE, borderLeftWidth: 0.5, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: BORDER },
   resultRowLast: { flexDirection: "row", backgroundColor: BODY_BLUE, borderLeftWidth: 0.5, borderRightWidth: 0.5, borderColor: BORDER },
@@ -60,7 +66,9 @@ const styles = StyleSheet.create({
   colComment: { width: "36.8%" },
   colImage: { width: "16.5%" },
 
-  commentsBlock: { backgroundColor: COMMENTS_GRAY, borderWidth: 0.5, borderColor: BORDER, borderTopWidth: 0, padding: 8, minHeight: 60, marginBottom: 10 },
+  resultsRows: { width: "94%", marginBottom: 10 },
+
+  commentsBlock: { width: "94%", backgroundColor: COMMENTS_GRAY, borderWidth: 0.5, borderColor: BORDER, borderTopWidth: 0, padding: 8, minHeight: 60, marginBottom: 10 },
 
   imagesBar: {
     backgroundColor: IMAGES_PEACH,
@@ -78,9 +86,9 @@ const styles = StyleSheet.create({
 
   footer: {
     position: "absolute",
-    bottom: 24,
-    left: 32,
-    right: 32,
+    bottom: 30,
+    left: 72,
+    right: 72,
     flexDirection: "row",
     justifyContent: "space-between",
     fontSize: 7,
@@ -216,7 +224,7 @@ export function InspectionReportDocument({
           <Text style={[styles.resultHeaderCell, styles.colComment]}>Kommentar</Text>
           <Text style={[styles.resultHeaderCell, styles.colImage, { borderRightWidth: 0 }]}>Bilde</Text>
         </View>
-        <View style={{ marginBottom: 10 }}>
+        <View style={styles.resultsRows}>
           {INSPECTION_CATEGORIES.map((category: InspectionCategory, i) => {
             const r = resultByCategory.get(category);
             const isLast = i === INSPECTION_CATEGORIES.length - 1;
