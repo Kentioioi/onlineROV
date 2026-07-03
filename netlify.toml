@@ -18,6 +18,13 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
 # SPA fallback (React Router client-side routing on direct URL navigation)
 # lives in public/_redirects, NOT here. A catch-all `/*` redirect in this
 # file gets applied by `netlify dev`'s proxy to every request, including

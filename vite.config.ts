@@ -11,7 +11,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // Registration happens explicitly in main.tsx (virtual:pwa-register)
+      // so it can attach a periodic update check - no injected script too.
+      injectRegister: false,
       manifest: {
         name: 'SEA ROV Inspector',
         short_name: 'ROV Inspector',
@@ -20,9 +22,12 @@ export default defineConfig({
         background_color: '#0b2540',
         display: 'standalone',
         start_url: '/',
-        // Placeholder icon (reuses the scaffold favicon) until real SEA ROV
-        // branded PWA icons are supplied - swap before shipping to users.
-        icons: [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        lang: 'nb',
+        icons: [
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
       },
       workbox: {
         // App shell (JS/CSS/HTML) is precached for zero-network launch.
@@ -41,17 +46,36 @@ export default defineConfig({
           {
             urlPattern: /\/api\/field-options/,
             handler: 'NetworkFirst',
-            options: { cacheName: 'api-field-options', networkTimeoutSeconds: 3, expiration: { maxEntries: 20 } },
+            options: {
+              cacheName: 'api-field-options',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 20 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
           },
           {
             urlPattern: /\/api\/reports(\?.*)?$/,
             handler: 'NetworkFirst',
-            options: { cacheName: 'api-reports-list', networkTimeoutSeconds: 3, expiration: { maxEntries: 20 } },
+            options: {
+              cacheName: 'api-reports-list',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 20 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
           },
           {
+            // Without cacheableResponse, CacheFirst's default behavior caches
+            // ANY response - including a 401/404/500 from a transient blip on
+            // the very first load of a newly-uploaded photo. That failure then
+            // gets served for up to 30 days: the thumbnail looks permanently
+            // broken even though a plain retry would have worked immediately.
             urlPattern: /\/api\/images\//,
             handler: 'CacheFirst',
-            options: { cacheName: 'api-images', expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 } },
+            options: {
+              cacheName: 'api-images',
+              expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
           },
         ],
       },

@@ -21,14 +21,21 @@ export default async () => {
     db.select({ blobKey: reportImages.blobKey }).from(reportImages).then((rows) => new Set(rows.map((r) => r.blobKey))),
   ]);
 
+  // Per-blob failures must not abort the whole sweep - one bad key would
+  // otherwise leave every later orphan alive until the day it happens to
+  // sort first.
   for (const blob of imageBlobs) {
     if (knownImageKeys.has(blob.key)) continue;
-    const meta = await store.getMetadata(blob.key);
-    const uploadedAt = meta?.metadata?.uploadedAt as string | undefined;
-    const ageMs = uploadedAt ? now - new Date(uploadedAt).getTime() : Number.POSITIVE_INFINITY;
-    if (ageMs > ORPHAN_AGE_MS) {
-      await store.delete(blob.key);
-      deleted++;
+    try {
+      const meta = await store.getMetadata(blob.key);
+      const uploadedAt = meta?.metadata?.uploadedAt as string | undefined;
+      const ageMs = uploadedAt ? now - new Date(uploadedAt).getTime() : Number.POSITIVE_INFINITY;
+      if (ageMs > ORPHAN_AGE_MS) {
+        await store.delete(blob.key);
+        deleted++;
+      }
+    } catch (err) {
+      console.warn(`blob-cleanup: failed handling ${blob.key}:`, err);
     }
   }
 
@@ -43,8 +50,21 @@ export default async () => {
 
   for (const blob of pdfBlobs) {
     if (knownPdfKeys.has(blob.key)) continue;
-    await store.delete(blob.key);
-    deleted++;
+    try {
+      // Grace period: pdf-generate writes the blob before stamping the
+      // reports row - a sweep running in that window must not delete a PDF
+      // that is about to be referenced. Old PDFs (pre-metadata) have no
+      // uploadedAt and were written long ago, so they delete immediately.
+      const meta = await store.getMetadata(blob.key);
+      const uploadedAt = meta?.metadata?.uploadedAt as string | undefined;
+      const ageMs = uploadedAt ? now - new Date(uploadedAt).getTime() : Number.POSITIVE_INFINITY;
+      if (ageMs > ORPHAN_AGE_MS) {
+        await store.delete(blob.key);
+        deleted++;
+      }
+    } catch (err) {
+      console.warn(`blob-cleanup: failed handling ${blob.key}:`, err);
+    }
   }
 
   console.log(

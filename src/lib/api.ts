@@ -77,7 +77,12 @@ export function getReport(id: string): Promise<ReportDetail> {
   return apiFetch(`/api/reports/${id}`);
 }
 
-export function createReport(input: ReportInput): Promise<ReportDetail> {
+/**
+ * isNew=false means the report already existed server-side (idempotent
+ * retry) and the returned row is the EXISTING data - the payload was NOT
+ * applied. Callers with fresher local edits must follow up with updateReport.
+ */
+export function createReport(input: ReportInput): Promise<ReportDetail & { isNew: boolean }> {
   return apiFetch(`/api/reports`, { method: "POST", body: JSON.stringify(input) });
 }
 

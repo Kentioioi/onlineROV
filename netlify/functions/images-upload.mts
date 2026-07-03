@@ -12,7 +12,7 @@ import { z } from "zod";
 const metaSchema = z.object({
   id: z.uuid(),
   category: z.enum(IMAGE_CATEGORIES),
-  sortOrder: z.coerce.number().int().nonnegative().default(0),
+  sortOrder: z.coerce.number().int().nonnegative().max(100_000).default(0),
 });
 
 export default async (req: Request, context: Context) => {
@@ -73,23 +73,35 @@ export default async (req: Request, context: Context) => {
     metadata: { contentType, uploadedAt: new Date().toISOString(), reportId },
   });
 
-  const [row] = await db
-    .insert(reportImages)
-    .values({
-      id: imageId,
-      reportId,
-      category,
-      blobKey,
-      originalFilename: file.name,
-      contentType,
-      sizeBytes: buffer.byteLength,
-      sortOrder,
-    })
-    .onConflictDoUpdate({
-      target: reportImages.id,
-      set: { category, blobKey, originalFilename: file.name, contentType, sizeBytes: buffer.byteLength, sortOrder },
-    })
-    .returning();
+  let row;
+  try {
+    [row] = await db
+      .insert(reportImages)
+      .values({
+        id: imageId,
+        reportId,
+        category,
+        blobKey,
+        originalFilename: file.name,
+        contentType,
+        sizeBytes: buffer.byteLength,
+        sortOrder,
+      })
+      .onConflictDoUpdate({
+        target: reportImages.id,
+        set: { category, blobKey, originalFilename: file.name, contentType, sizeBytes: buffer.byteLength, sortOrder },
+      })
+      .returning();
+  } catch (err) {
+    // The report existed at the check above but was deleted while the blob
+    // was uploading (offline photo sync racing a delete) - the insert hits
+    // the FK. Clean up the just-written blob and answer 404 rather than 500,
+    // so the offline outbox treats it as a permanent rejection, not a retry.
+    await store.delete(blobKey).catch(() => undefined);
+    const isFkViolation = err instanceof Error && "code" in err && (err as { code?: string }).code === "23503";
+    if (isFkViolation) return notFound("Rapport ikke funnet");
+    throw err;
+  }
 
   // Photo changes are report changes - without this, the detail page's
   // "PDF is stale" warning missed reports whose only edit was photos.

@@ -14,6 +14,9 @@ export type OutboxReport = {
   lastSyncAttemptAt: string | null;
   syncErrorMessage: string | null;
   syncAttemptCount: number;
+  // Server rejected the payload outright (4xx) - auto-retry can never
+  // succeed, so only an explicit manual "Synkroniser nå" retries it.
+  permanentError?: boolean;
 };
 
 export type OutboxImageSyncState = "pending" | "uploading" | "synced" | "sync_failed";
@@ -29,6 +32,8 @@ export type OutboxImage = {
   syncState: OutboxImageSyncState;
   localCreatedAt: string;
   syncErrorMessage: string | null;
+  // See OutboxReport.permanentError.
+  permanentError?: boolean;
 };
 
 interface RovInspectorDb extends DBSchema {
@@ -92,14 +97,32 @@ export async function listPendingOutboxReports(): Promise<OutboxReport[]> {
   return all.filter((r) => r.syncState !== "synced");
 }
 
-export async function markReportSynced(id: string, reportNumber: number): Promise<void> {
+/**
+ * Marks an outbox report synced - but ONLY if the record hasn't been
+ * re-queued with newer data since the sync attempt started. Without the
+ * expectedLocalUpdatedAt guard, this race lost data: syncNow POSTs dataV1,
+ * the user re-saves offline (outbox now holds dataV2), the V1 POST
+ * completes and blindly flipped the V2 record to synced - V2 then never
+ * synced anywhere and cleanupSyncedOutbox deleted it.
+ */
+export async function markReportSynced(
+  id: string,
+  reportNumber: number,
+  expectedLocalUpdatedAt?: string,
+): Promise<void> {
   const db = await getOfflineDb();
   const record = await db.get("outbox_reports", id);
   if (!record) return;
+  if (expectedLocalUpdatedAt !== undefined && record.localUpdatedAt !== expectedLocalUpdatedAt) return;
   record.syncState = "synced";
   record.reportNumber = reportNumber;
   record.syncErrorMessage = null;
   await db.put("outbox_reports", record);
+}
+
+export async function deleteOutboxReport(id: string): Promise<void> {
+  const db = await getOfflineDb();
+  await db.delete("outbox_reports", id);
 }
 
 export async function saveOutboxImage(record: OutboxImage): Promise<void> {

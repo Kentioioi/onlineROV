@@ -19,7 +19,7 @@ import { InspectionResultsSection, type FormInspectionResult } from "@/component
 import { ImageUploadSection } from "@/components/form/ImageUploadSection";
 import { MaskebruddDialog } from "@/components/form/MaskebruddDialog";
 import { ApiError, createReport, downloadPdf, generatePdf, getReport, updateReport, type ReportDetail } from "@/lib/api";
-import { markReportSynced } from "@/offline/db";
+import { deleteOutboxReport } from "@/offline/db";
 import { queueReportForSync } from "@/offline/syncManager";
 import {
   CHECKED_COMMENT_DEFAULTS,
@@ -199,26 +199,33 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
   });
 
   // Half-filled reports were silently lost on any navigation (audit
-  // finding) - block in-app navigation and tab close while dirty, except
-  // right after a successful save.
+  // finding) - block in-app navigation and tab close while dirty OR while
+  // photo uploads are still running (photos never touch form state, so
+  // isDirty alone missed a mid-batch upload), except right after a
+  // successful save.
   const skipNavGuard = useRef(false);
-  const blocker = useBlocker(() => formState.isDirty && !skipNavGuard.current);
+  const [uploadingPhotos, setUploadingPhotos] = useState(0);
+  const blocker = useBlocker(() => (formState.isDirty || uploadingPhotos > 0) && !skipNavGuard.current);
   useEffect(() => {
     if (blocker.state === "blocked") {
-      if (window.confirm("Rapporten har ulagrede endringer. Forlate siden uten å lagre?")) {
+      const message =
+        uploadingPhotos > 0
+          ? "Bilder lastes fortsatt opp. Forlate siden likevel?"
+          : "Rapporten har ulagrede endringer. Forlate siden uten å lagre?";
+      if (window.confirm(message)) {
         blocker.proceed();
       } else {
         blocker.reset();
       }
     }
-  }, [blocker]);
+  }, [blocker, uploadingPhotos]);
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (formState.isDirty && !skipNavGuard.current) e.preventDefault();
+      if ((formState.isDirty || uploadingPhotos > 0) && !skipNavGuard.current) e.preventDefault();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [formState]);
+  }, [formState, uploadingPhotos]);
 
   const [images, setImages] = useState<ReportImage[]>([]);
   const [savedId, setSavedId] = useState<string | null>(mode === "edit" ? routeId ?? null : null);
@@ -264,15 +271,24 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
     // client-generated id, and an offline-queued report has NO server row
     // yet - routing a re-save to updateReport would 404 (audit finding).
     try {
-      const result = await createReport(input);
+      let result = await createReport(input);
+      if (!result.isNew) {
+        // The row already existed (the background sync won the race with
+        // older queued data, or this is a retry of a completed create) -
+        // the POST returned the EXISTING row without applying this
+        // payload. Follow up with a PUT so the newest edits actually land
+        // instead of being silently discarded under a success toast.
+        result = { ...(await updateReport(input.id, input)), isNew: false };
+      }
       if (offlineQueued) {
-        // The outbox entry now has a server row - mark it done so the
-        // background sync doesn't re-POST stale data.
-        await markReportSynced(input.id, result.reportNumber);
+        // The server now holds this exact payload - drop the outbox entry
+        // entirely so the background sync can't re-POST stale data.
+        await deleteOutboxReport(input.id);
         setOfflineQueued(false);
       }
       setSavedId(result.id);
       queryClient.invalidateQueries({ queryKey: ["reports"] });
+      queryClient.invalidateQueries({ queryKey: ["report", result.id] });
       return { id: result.id, reportNumber: result.reportNumber, offline: false };
     } catch (err) {
       if (err instanceof ApiError) throw err;
@@ -376,6 +392,33 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Laster rapport...
+      </div>
+    );
+  }
+
+  // Never render the editable form without the report's data. Doing so
+  // showed a BLANK form with savedId pointing at the real report - one
+  // "Lagre rapport" tap would overwrite the entire report with empty
+  // defaults. Offline relaunch on an edit URL lands here too (edits require
+  // connectivity by design).
+  if (mode === "edit" && !reportQuery.data) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+        <AlertTriangle className="h-8 w-8 text-amber-500" />
+        <div>
+          <p className="font-medium">Kunne ikke laste rapporten</p>
+          <p className="text-sm text-muted-foreground">
+            Redigering krever nettforbindelse. Sjekk tilkoblingen og prøv igjen.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => void reportQuery.refetch()}>
+            Prøv igjen
+          </Button>
+          <Button variant="ghost" onClick={() => navigate("/reports")}>
+            Til rapporter
+          </Button>
+        </div>
       </div>
     );
   }
@@ -605,6 +648,7 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
               ensureSaved={ensureSaved}
               images={images}
               onImagesChange={setImages}
+              onPendingCountChange={setUploadingPhotos}
             />
           </AccordionContent>
         </AccordionItem>

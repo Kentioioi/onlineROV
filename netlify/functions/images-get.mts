@@ -20,10 +20,14 @@ export default async (req: Request, context: Context) => {
   const blob = await getReportStore().get(row.blobKey, { type: "blob" });
   if (!blob) return notFound("Bilde ikke funnet");
 
+  // no-store at the HTTP layer: photo caching is owned entirely by the
+  // service worker's api-images cache, which the app can purge on logout.
+  // A browser-level 24h HTTP cache kept inspection photos retrievable
+  // without auth on a shared device after logout.
   return new Response(blob, {
     headers: {
       "content-type": row.contentType ?? "image/jpeg",
-      "cache-control": "private, max-age=86400",
+      "cache-control": "private, no-store",
     },
   });
 };

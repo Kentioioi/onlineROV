@@ -1,4 +1,4 @@
-import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import type { InspectionResult, Report, ReportImage } from "../../../db/schema.js";
 import { CATEGORY_LABELS, INSPECTION_CATEGORIES, type InspectionCategory } from "../../../shared/constants.js";
 import { LOGO_PNG_BASE64 } from "./logo.js";
@@ -8,6 +8,11 @@ import { formatDateNo } from "../../../shared/format.js";
 // (rov_inspector/assets/Inspeksjonsdokument_MASTER.docx, word/document.xml
 // <w:shd w:fill=.../> values) rather than invented - this is the actual SEA
 // ROV letterhead palette, not a redesign.
+// Norwegian labels were being hyphenated mid-word by react-pdf's default
+// (English) hyphenation - "Grunn for in-speksjon" in a finished report.
+// Whole-word wrapping only.
+Font.registerHyphenationCallback((word) => [word]);
+
 const HEADER_BLUE = "#8EAADB"; // section title bars, basic-info label cells
 const VALUE_BLUE = "#DEEAF6"; // basic-info value cells
 const BODY_BLUE = "#B4C6E7"; // cage-info body, inspection-results data rows
@@ -49,15 +54,29 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     borderBottomWidth: 0,
   },
+  // Two-column variant for the Merd / Miljø bar: real 50% columns aligned
+  // with the two body columns beneath it, instead of a literal run of
+  // spaces pushing the second heading "roughly" into place.
+  sectionBarSplit: {
+    width: "94%",
+    flexDirection: "row",
+    backgroundColor: HEADER_BLUE,
+    borderWidth: 0.5,
+    borderColor: BORDER,
+    borderBottomWidth: 0,
+  },
+  sectionBarCell: { width: "50%", padding: 4, fontFamily: "Helvetica-Bold" },
   cageBody: { width: "94%", flexDirection: "row", borderWidth: 0.5, borderColor: BORDER, marginBottom: 10 },
   cageCol: { width: "50%", backgroundColor: BODY_BLUE, padding: 6 },
   cageColBorder: { borderRightWidth: 0.5, borderRightColor: BORDER },
   cageLine: { marginBottom: 2 },
 
-  resultsHeaderRow: { width: "94%", flexDirection: "row", backgroundColor: RESULTS_HEADER_GRAY, borderWidth: 0.5, borderColor: BORDER, borderTopWidth: 0 },
+  resultsHeaderRow: { width: "94%", flexDirection: "row", backgroundColor: RESULTS_HEADER_GRAY, borderWidth: 0.5, borderColor: BORDER },
   resultHeaderCell: { padding: 4, fontFamily: "Helvetica-Bold", fontSize: 8, borderRightWidth: 0.5, borderRightColor: BORDER },
   resultRow: { flexDirection: "row", backgroundColor: BODY_BLUE, borderLeftWidth: 0.5, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: BORDER },
-  resultRowLast: { flexDirection: "row", backgroundColor: BODY_BLUE, borderLeftWidth: 0.5, borderRightWidth: 0.5, borderColor: BORDER },
+  // The last data row previously had no bottom border, leaving the whole
+  // inspection-results table visually open at the bottom edge.
+  resultRowLast: { flexDirection: "row", backgroundColor: BODY_BLUE, borderLeftWidth: 0.5, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: BORDER },
   resultCell: { padding: 4, fontSize: 8, borderRightWidth: 0.5, borderRightColor: BORDER },
   // Column widths mirror the master template's dxa ratios exactly
   // (1665/1307/992/3119/1405 out of 8488 total).
@@ -69,7 +88,7 @@ const styles = StyleSheet.create({
 
   resultsRows: { width: "94%", marginBottom: 10 },
 
-  commentsBlock: { width: "94%", backgroundColor: COMMENTS_GRAY, borderWidth: 0.5, borderColor: BORDER, borderTopWidth: 0, padding: 8, minHeight: 60, marginBottom: 10 },
+  commentsBlock: { width: "94%", backgroundColor: COMMENTS_GRAY, borderWidth: 0.5, borderColor: BORDER, padding: 8, minHeight: 60, marginBottom: 10 },
 
   imagesBar: {
     backgroundColor: IMAGES_PEACH,
@@ -82,7 +101,10 @@ const styles = StyleSheet.create({
   imageCategoryLabel: { fontFamily: "Helvetica-Bold", fontSize: 9, marginTop: 6, marginBottom: 4 },
   imageGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   imageWrap: { width: "31%" },
-  image: { width: "100%", objectFit: "cover", borderWidth: 0.5, borderColor: BORDER },
+  // Fixed height + cover crop: without it, one portrait photo among
+  // landscape ones made rows ragged and could push a whole category off
+  // the page. Uniform tiles match how the Word master presents photos.
+  image: { width: "100%", height: 110, objectFit: "cover", borderWidth: 0.5, borderColor: BORDER },
   imageCaption: { fontSize: 7, color: "#555555", marginTop: 2 },
 
   footer: {
@@ -132,8 +154,9 @@ function CageLine({ label, value }: { label: string; value: string }) {
 }
 
 function fmtTime(from: string | null, to: string | null): string {
-  if (!from && !to) return "";
-  return `${from ?? "?"} - ${to ?? "?"}`;
+  // Only render what was actually filled in - "08:00 - ?" read like an
+  // error in the finished report when the end time was left blank.
+  return [from, to].filter(Boolean).join(" - ");
 }
 
 function fmtUnit(value: string | null, unit: string): string {
@@ -168,7 +191,10 @@ export function InspectionReportDocument({
     <Document title={`Inspeksjonsrapport ${report.reportNumber}`}>
       <Page size="A4" style={styles.page}>
         <Image style={styles.logo} src={{ data: Buffer.from(LOGO_PNG_BASE64, "base64"), format: "png" }} />
-        <Text style={styles.title}>Inspeksjonsrapport NOT{"   "}{report.vessel ? `MS ${report.vessel}` : ""}</Text>
+        <Text style={styles.title}>
+          Inspeksjonsrapport NOT
+          {report.vessel ? `  -  MS ${report.vessel}` : ""}
+        </Text>
         <View style={styles.titleRule} />
 
         <View style={styles.table}>
@@ -194,9 +220,10 @@ export function InspectionReportDocument({
           />
         </View>
 
-        <Text style={styles.sectionBar}>
-          Merd{"                                                                  "}Miljø & Økologiske faktorer
-        </Text>
+        <View style={styles.sectionBarSplit}>
+          <Text style={styles.sectionBarCell}>Merd</Text>
+          <Text style={styles.sectionBarCell}>Miljø & Økologiske faktorer</Text>
+        </View>
         <View style={styles.cageBody}>
           <View style={[styles.cageCol, styles.cageColBorder]}>
             <CageLine label="Merd nummer" value={report.merdNumber ?? ""} />
@@ -251,19 +278,33 @@ export function InspectionReportDocument({
             <Text style={styles.imagesBar} break>
               Bilder:
             </Text>
-            {[...imagesByCategory.entries()].map(([category, catImages]) => (
-              <View key={category} wrap={false}>
-                <Text style={styles.imageCategoryLabel}>{CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]}</Text>
-                <View style={styles.imageGrid}>
-                  {catImages.map((img) => (
-                    <View style={styles.imageWrap} key={img.id}>
-                      <Image style={styles.image} src={{ data: img.data, format: "jpg" }} />
-                      <Text style={styles.imageCaption}>{img.originalFilename ?? ""}</Text>
-                    </View>
-                  ))}
+            {/* Each category renders as unbreakable chunks of up to 6 photos
+                (two grid rows, always shorter than a page). The heading is
+                bound to the first chunk, so it can never be stranded alone at
+                the bottom of a page - and a category with many photos still
+                flows onto following pages chunk by chunk instead of
+                overflowing past the page edge. */}
+            {[...imagesByCategory.entries()].flatMap(([category, catImages]) => {
+              const chunks: ImageWithBytes[][] = [];
+              for (let i = 0; i < catImages.length; i += 6) chunks.push(catImages.slice(i, i + 6));
+              return chunks.map((chunk, ci) => (
+                <View key={`${category}-${ci}`} wrap={false}>
+                  {ci === 0 && (
+                    <Text style={styles.imageCategoryLabel}>
+                      {CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]}
+                    </Text>
+                  )}
+                  <View style={styles.imageGrid}>
+                    {chunk.map((img) => (
+                      <View style={styles.imageWrap} key={img.id}>
+                        <Image style={styles.image} src={{ data: img.data, format: "jpg" }} />
+                        <Text style={styles.imageCaption}>{img.originalFilename ?? ""}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </View>
-            ))}
+              ));
+            })}
           </>
         )}
 

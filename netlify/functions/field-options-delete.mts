@@ -9,8 +9,10 @@ export default async (req: Request, context: Context) => {
   const user = await resolveUser();
   if (!user) return unauthorized();
 
+  // Bounds check as well as integer check - an id beyond int4 range would
+  // pass Number.isInteger but blow up in Postgres as a 500.
   const id = Number(context.params.id);
-  if (!Number.isInteger(id)) return badRequest("Ugyldig id");
+  if (!Number.isInteger(id) || id < 1 || id > 2_147_483_647) return badRequest("Ugyldig id");
 
   // Seeded and user-added values are identical rows - deleting either one
   // works exactly the same way, per the plan's unified field_options design.

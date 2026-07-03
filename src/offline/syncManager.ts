@@ -4,6 +4,7 @@ import {
   countPending,
   deleteOutboxImage,
   getOfflineDb,
+  getOutboxReport,
   listPendingOutboxImages,
   listPendingOutboxReports,
   markReportSynced,
@@ -35,13 +36,18 @@ let syncing = false;
  * never PUTs. reports-create is idempotent (ON CONFLICT (id) DO NOTHING),
  * so a report can be queued here multiple times (e.g. re-saved locally
  * while still offline) and only ever produces one server row.
+ *
+ * force=true (the manual "Synkroniser nå" button) also retries records the
+ * server permanently rejected (4xx); the automatic triggers skip those so a
+ * doomed payload doesn't re-upload full photo blobs every 45 seconds.
  */
-export async function syncNow(): Promise<void> {
+export async function syncNow(options?: { force?: boolean }): Promise<void> {
+  const force = options?.force ?? false;
   if (syncing) return;
   if (typeof navigator !== "undefined" && !navigator.onLine) return;
   syncing = true;
   try {
-    const pendingReports = await listPendingOutboxReports();
+    const pendingReports = (await listPendingOutboxReports()).filter((r) => force || !r.permanentError);
     for (const record of pendingReports) {
       await syncReport(record);
     }
@@ -52,7 +58,9 @@ export async function syncNow(): Promise<void> {
     // but died mid-image-batch. Without this sweep such photos stayed
     // queued in IndexedDB forever with the badge stuck at "N venter".
     const stillPending = new Set((await listPendingOutboxReports()).map((r) => r.id));
-    const stranded = (await listPendingOutboxImages()).filter((img) => !stillPending.has(img.reportId));
+    const stranded = (await listPendingOutboxImages()).filter(
+      (img) => !stillPending.has(img.reportId) && (force || !img.permanentError),
+    );
     await uploadWithConcurrency(stranded);
     await cleanupSyncedOutbox();
   } finally {
@@ -61,8 +69,19 @@ export async function syncNow(): Promise<void> {
   }
 }
 
+/** Server said 4xx: the payload itself is rejected and a retry of the same
+ * bytes can never succeed. 401 (log in again) and 408/429 (transient) are
+ * still retryable. */
+function isPermanentRejection(err: unknown): boolean {
+  return err instanceof ApiError && err.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status);
+}
+
 async function syncReport(record: OutboxReport): Promise<void> {
   const db = await getOfflineDb();
+  // Captured before the POST: if the user re-queues newer data while the
+  // request is in flight, markReportSynced sees the mismatch and refuses -
+  // the newer record stays pending and syncs on the next pass.
+  const attemptLocalUpdatedAt = record.localUpdatedAt;
   record.syncState = "syncing";
   record.lastSyncAttemptAt = new Date().toISOString();
   record.syncAttemptCount += 1;
@@ -71,13 +90,22 @@ async function syncReport(record: OutboxReport): Promise<void> {
 
   try {
     const result = await createReport(record.data);
-    await markReportSynced(record.id, result.reportNumber);
+    await markReportSynced(record.id, result.reportNumber, attemptLocalUpdatedAt);
     notifyPendingChanged();
     await syncImagesForReport(record.id);
   } catch (err) {
-    record.syncState = "sync_failed";
-    record.syncErrorMessage = errorMessage(err);
-    await db.put("outbox_reports", record);
+    // Re-read before writing failure state - the record may have been
+    // replaced with newer data (or deleted by a successful manual save)
+    // while the request was in flight.
+    const current = await db.get("outbox_reports", record.id);
+    if (!current || current.localUpdatedAt !== attemptLocalUpdatedAt) {
+      notifyPendingChanged();
+      return;
+    }
+    current.syncState = "sync_failed";
+    current.syncErrorMessage = errorMessage(err);
+    current.permanentError = isPermanentRejection(err);
+    await db.put("outbox_reports", current);
     notifyPendingChanged();
   }
 }
@@ -120,6 +148,7 @@ async function syncImage(record: OutboxImage): Promise<void> {
   } catch (err) {
     record.syncState = "sync_failed";
     record.syncErrorMessage = errorMessage(err);
+    record.permanentError = isPermanentRejection(err);
     await db.put("outbox_images", record);
   } finally {
     notifyPendingChanged();
@@ -135,18 +164,24 @@ function errorMessage(err: unknown): string {
   return "Ukjent feil";
 }
 
-export function queueReportForSync(id: string, data: OutboxReport["data"]): Promise<void> {
+export async function queueReportForSync(id: string, data: OutboxReport["data"]): Promise<void> {
   const now = new Date().toISOString();
-  return saveOutboxReport({
+  const existing = await getOutboxReport(id);
+  await saveOutboxReport({
     id,
     data,
     syncState: "draft_local",
-    reportNumber: null,
-    localCreatedAt: now,
+    reportNumber: existing?.reportNumber ?? null,
+    localCreatedAt: existing?.localCreatedAt ?? now,
+    // Always a fresh localUpdatedAt: this is what lets markReportSynced
+    // detect that an in-flight sync attempt no longer represents the
+    // queued data. New data also resets a permanent rejection - the
+    // changed payload deserves a fresh attempt.
     localUpdatedAt: now,
-    lastSyncAttemptAt: null,
+    lastSyncAttemptAt: existing?.lastSyncAttemptAt ?? null,
     syncErrorMessage: null,
-    syncAttemptCount: 0,
+    syncAttemptCount: existing?.syncAttemptCount ?? 0,
+    permanentError: false,
   }).then(notifyPendingChanged);
 }
 

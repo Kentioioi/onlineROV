@@ -7,11 +7,19 @@ import { INSPECTION_CATEGORIES, IMAGE_CATEGORIES, FIELD_KEYS } from "./constants
 // managed fields (report_number, created_at/updated_at, created_by/updated_by,
 // pdf_blob_key/pdf_generated_at) are deliberately absent here.
 
+// Upper bounds exist for robustness, not UX: unbounded strings/ints passed
+// zod but blew up later - int4 overflow surfacing as a 500 instead of a 400,
+// and a multi-MB combobox value propagating into field_options where every
+// user's dropdown would download it. Limits are far above any real value.
+const shortText = z.string().max(300);
+const longText = z.string().max(10_000);
+const INT4_MAX = 2_147_483_647;
+
 export const inspectionResultInputSchema = z.object({
   category: z.enum(INSPECTION_CATEGORIES),
   checked: z.boolean(),
-  condition: z.string().nullable().optional(),
-  comment: z.string().nullable().optional(),
+  condition: shortText.nullable().optional(),
+  comment: z.string().max(2_000).nullable().optional(),
 });
 export type InspectionResultInput = z.infer<typeof inspectionResultInputSchema>;
 
@@ -30,28 +38,28 @@ export const reportInputSchema = z.object({
   // Client-generated uuid - the offline-sync idempotency key (see plan).
   id: z.uuid(),
   date: isoDate,
-  vessel: z.string().nullable().optional(),
+  vessel: shortText.nullable().optional(),
   timeFrom: timeOfDay,
   timeTo: timeOfDay,
-  projectLeader: z.string().nullable().optional(),
-  location: z.string().nullable().optional(),
-  rovOperator: z.string().nullable().optional(),
-  reason: z.string().nullable().optional(),
+  projectLeader: shortText.nullable().optional(),
+  location: shortText.nullable().optional(),
+  rovOperator: shortText.nullable().optional(),
+  reason: shortText.nullable().optional(),
 
-  merdNumber: z.string().nullable().optional(),
-  merdType: z.string().nullable().optional(),
-  sizeX: z.number().positive().nullable().optional(),
-  sizeY: z.number().positive().nullable().optional(),
-  depth: z.number().positive().nullable().optional(),
-  deadFishCount: z.number().int().nonnegative().nullable().optional(),
+  merdNumber: shortText.nullable().optional(),
+  merdType: shortText.nullable().optional(),
+  sizeX: z.number().positive().max(100_000).nullable().optional(),
+  sizeY: z.number().positive().max(100_000).nullable().optional(),
+  depth: z.number().positive().max(100_000).nullable().optional(),
+  deadFishCount: z.number().int().nonnegative().max(INT4_MAX).nullable().optional(),
   deadFishApprox: z.boolean().default(false),
-  currentStrength: z.string().nullable().optional(),
-  visibility: z.string().nullable().optional(),
-  wildFish: z.string().nullable().optional(),
-  wildFishNote: z.string().nullable().optional(),
-  growth: z.string().nullable().optional(),
+  currentStrength: shortText.nullable().optional(),
+  visibility: shortText.nullable().optional(),
+  wildFish: shortText.nullable().optional(),
+  wildFishNote: z.string().max(1_000).nullable().optional(),
+  growth: shortText.nullable().optional(),
 
-  comments: z.string().nullable().optional(),
+  comments: longText.nullable().optional(),
 
   // Always exactly 5 rows, one per fixed category. Uniqueness enforced here
   // too - a duplicated category would otherwise hit the DB's unique
@@ -83,14 +91,14 @@ export const reportImageMetaSchema = z.object({
   category: z.enum(IMAGE_CATEGORIES),
   originalFilename: z.string(),
   contentType: z.string(),
-  sizeBytes: z.number().int().nonnegative(),
-  sortOrder: z.number().int().nonnegative().default(0),
+  sizeBytes: z.number().int().nonnegative().max(INT4_MAX),
+  sortOrder: z.number().int().nonnegative().max(100_000).default(0),
 });
 export type ReportImageMeta = z.infer<typeof reportImageMetaSchema>;
 
 export const fieldOptionInputSchema = z.object({
   fieldKey: z.enum(FIELD_KEYS),
-  value: z.string().trim().min(1, "Verdi kan ikke være tom"),
+  value: z.string().trim().min(1, "Verdi kan ikke være tom").max(300, "Verdien er for lang"),
 });
 export type FieldOptionInput = z.infer<typeof fieldOptionInputSchema>;
 

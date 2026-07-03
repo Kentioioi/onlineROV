@@ -20,8 +20,13 @@ export default async (req: Request, context: Context) => {
     .limit(1);
   if (!row) return notFound("Bilde ikke funnet");
 
-  await getReportStore().delete(row.blobKey);
+  // DB row first, blob after: a failed blob delete leaves an orphaned blob
+  // (cheap, swept by the daily cleanup); the reverse order could leave a
+  // live image row whose bytes are gone - a permanently broken thumbnail.
   await db.delete(reportImages).where(eq(reportImages.id, imageId));
+  await getReportStore()
+    .delete(row.blobKey)
+    .catch(() => undefined);
   // Photo changes are report changes - keeps the "PDF is stale" check honest.
   await db.update(reports).set({ updatedAt: new Date(), updatedBy: user.id }).where(eq(reports.id, reportId));
 

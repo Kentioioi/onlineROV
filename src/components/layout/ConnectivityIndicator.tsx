@@ -35,7 +35,9 @@ export function ConnectivityIndicator({ compact = false }: { compact?: boolean }
   async function handleSyncNow() {
     setSyncing(true);
     try {
-      await syncNow();
+      // force: the manual button also retries records the server has
+      // permanently rejected - the user explicitly asked for a retry.
+      await syncNow({ force: true });
     } finally {
       setSyncing(false);
     }

@@ -10,13 +10,15 @@ export type AuthedUser = {
 
 /**
  * Resolves the current Identity user for a Function request, with a
- * local-dev-only bypass: DEV_AUTH_BYPASS must be explicitly set AND absent
- * from every real Netlify deploy context, so there is no runtime flag to
- * accidentally leave on in production - only an env var that must be
- * deliberately added to a hosted environment for the bypass to activate there.
+ * local-dev-only bypass. The bypass fails closed: it requires BOTH the
+ * explicit DEV_AUTH_BYPASS flag AND `netlify dev`'s own NETLIFY_DEV marker.
+ * The second condition can never be true in production, deploy-preview, or
+ * branch-deploy contexts, so even accidentally importing a local .env file
+ * into the hosted site's environment (Netlify UI / `netlify env:import`
+ * both default to all contexts) cannot disable auth in a real deploy.
  */
 export async function resolveUser(): Promise<AuthedUser | null> {
-  if (Netlify.env.get("DEV_AUTH_BYPASS") === "true") {
+  if (Netlify.env.get("DEV_AUTH_BYPASS") === "true" && Netlify.env.get("NETLIFY_DEV") === "true") {
     return { id: "dev-user", email: "dev@local" };
   }
 

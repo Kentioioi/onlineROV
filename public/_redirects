@@ -1,1 +1,10 @@
+# An /api/* request that no Function route matched must 404 as JSON-ish, not
+# fall through to the SPA shell below (a 200 text/html "response" for an API
+# call confuses every client, incl. the offline sync layer). Real function
+# routes are matched before redirects, so this only catches unknown paths.
+/api/*  /api-not-found  404
+
+# SPA fallback (React Router client-side routing on direct URL navigation).
+# Lives here rather than netlify.toml so `netlify dev`'s proxy doesn't apply
+# it to Vite's own internal module requests (which breaks the dev server).
 /*  /index.html  200

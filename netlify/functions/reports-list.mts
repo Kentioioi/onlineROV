@@ -13,8 +13,9 @@ export default async (req: Request) => {
   const p = url.searchParams;
 
   // Math.floor: fractional values would reach Postgres LIMIT/OFFSET and
-  // error out as a 500.
-  const page = Math.max(1, Math.floor(Number(p.get("page") ?? "1")) || 1);
+  // error out as a 500. The upper clamp matters too: 1e300/Infinity survive
+  // floor+max and overflow Postgres' OFFSET the same way.
+  const page = Math.min(1_000_000, Math.max(1, Math.floor(Number(p.get("page") ?? "1")) || 1));
   const pageSize = Math.min(100, Math.max(1, Math.floor(Number(p.get("page_size") ?? "25")) || 25));
 
   const conditions = [];

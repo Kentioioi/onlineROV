@@ -133,8 +133,13 @@ export default async (req: Request) => {
     return { report: inserted, results: resultRows, isNew: true };
   });
 
+  // isNew travels in the BODY, not just the status code: apiFetch strips the
+  // status, and the client must know whether its payload was actually
+  // applied (201) or an existing row was returned untouched (200) - in the
+  // latter case the client follows up with a PUT to apply newer edits
+  // (offline-sync race, see ReportFormPage.persist).
   return json(
-    { ...result.report, inspectionResults: result.results },
+    { ...result.report, inspectionResults: result.results, isNew: result.isNew },
     { status: result.isNew ? 201 : 200 },
   );
 };
