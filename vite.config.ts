@@ -42,13 +42,19 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         // API GET responses are a safety-net cache only - the real offline
         // data layer is IndexedDB (src/offline/db.ts), not this HTTP cache.
+        // networkTimeoutSeconds 10, not 3: on a satellite/boat link with
+        // consistent >3s latency, a 3s cutoff meant EVERY list load fell
+        // back to the cached copy - the list was perpetually one refresh
+        // behind while looking fresh, so a just-synced report seemed to
+        // have vanished (inviting duplicate re-entry). 10s tolerates slow
+        // links; genuinely-offline requests still fail fast to cache.
         runtimeCaching: [
           {
             urlPattern: /\/api\/field-options/,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-field-options',
-              networkTimeoutSeconds: 3,
+              networkTimeoutSeconds: 10,
               expiration: { maxEntries: 20 },
               cacheableResponse: { statuses: [0, 200] },
             },
@@ -58,7 +64,7 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-reports-list',
-              networkTimeoutSeconds: 3,
+              networkTimeoutSeconds: 10,
               expiration: { maxEntries: 20 },
               cacheableResponse: { statuses: [0, 200] },
             },

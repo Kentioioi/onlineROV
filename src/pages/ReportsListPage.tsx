@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { FileDown, Loader2, Search } from "lucide-react";
+import { AlertTriangle, FileDown, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,13 @@ export function ReportsListPage() {
 
   const totalPages = query.data ? Math.max(1, Math.ceil(query.data.total / PAGE_SIZE)) : 1;
 
+  // If the dataset shrinks under us (another inspector deletes reports, a
+  // background refetch), a now-out-of-range page rendered as "Ingen
+  // rapporter funnet" with the pagination controls hidden - no way back.
+  useEffect(() => {
+    if (query.data && page > totalPages) setPage(totalPages);
+  }, [query.data, page, totalPages]);
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Rapporter</h1>
@@ -76,6 +83,17 @@ export function ReportsListPage() {
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
           ))}
+        </div>
+      ) : query.isError ? (
+        // A fetch failure must never read as "no reports exist" - for
+        // legally required documentation that looks like data loss and
+        // invites duplicate re-entry.
+        <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <AlertTriangle className="h-6 w-6 text-amber-500" />
+          <p className="text-sm text-muted-foreground">Kunne ikke hente rapporter. Sjekk nettforbindelsen.</p>
+          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+            Prøv igjen
+          </Button>
         </div>
       ) : query.data && query.data.items.length > 0 ? (
         <>

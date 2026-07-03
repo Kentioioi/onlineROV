@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, CloudOff, ImageOff, Loader2, Upload, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -8,6 +9,8 @@ import { ApiError, deleteImage, imageUrl, uploadImage } from "@/lib/api";
 import { compressImageForUpload } from "@/lib/compress-image";
 import { queueImageForSync } from "@/offline/syncManager";
 import { deleteOutboxImage } from "@/offline/db";
+import { CATEGORY_LABELS, IMAGE_CATEGORIES, type ImageCategory } from "../../../shared/constants";
+import type { ReportImage } from "../../../db/schema";
 
 // Outbox deletion is bookkeeping, never worth failing the happy path over.
 async function deleteQueuedImage(id: string): Promise<void> {
@@ -17,8 +20,6 @@ async function deleteQueuedImage(id: string): Promise<void> {
     // ignore - worst case the record lingers until cleanup
   }
 }
-import { CATEGORY_LABELS, IMAGE_CATEGORIES, type ImageCategory } from "../../../shared/constants";
-import type { ReportImage } from "../../../db/schema";
 
 type PendingUpload = {
   localId: string;
@@ -45,6 +46,14 @@ export function ImageUploadSection({
 }) {
   const [active, setActive] = useState<ImageCategory>("liftup");
   const [pending, setPending] = useState<PendingUpload[]>([]);
+  const queryClient = useQueryClient();
+
+  // Photo changes bypass the form's save flow, so the detail page's cached
+  // copy of this report must be invalidated here - otherwise navigating
+  // back within the cache's staleTime showed the pre-edit photo set.
+  const invalidateReport = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["report", reportId] });
+  }, [queryClient, reportId]);
 
   // Photos added this session keep their in-memory preview as the thumbnail
   // source even after upload succeeds. Re-fetching the freshly-uploaded bytes
@@ -132,6 +141,7 @@ export function ImageUploadSection({
           onImagesChange((prev) => [...prev, row]);
           setPending((prev) => prev.filter((p) => p.localId !== it.localId));
           await deleteQueuedImage(it.localId);
+          invalidateReport();
         } catch (err) {
           if (err instanceof ApiError && err.status < 500) {
             // Genuine server rejection (bad format, too big, ...) - a retry
@@ -149,7 +159,7 @@ export function ImageUploadSection({
         }
       }
     },
-    [isSaved, ensureSaved, reportId, onImagesChange],
+    [isSaved, ensureSaved, reportId, onImagesChange, invalidateReport],
   );
 
   function dismissPending(localId: string) {
@@ -170,6 +180,7 @@ export function ImageUploadSection({
     onImagesChange((prev) => prev.filter((i) => i.id !== image.id));
     try {
       await deleteImage(reportId, image.id);
+      invalidateReport();
     } catch {
       toast.error("Kunne ikke slette bildet");
       onImagesChange((prev) => [...prev, image]);
@@ -203,7 +214,17 @@ export function ImageUploadSection({
             category={cat}
             images={images.filter((i) => i.category === cat)}
             pending={pending.filter((p) => p.category === cat)}
-            onDrop={(files) => handleDrop(cat, files)}
+            onDrop={(files) =>
+              // handleDrop is a floating promise (dropzone callback) - a
+              // rejection anywhere inside would otherwise vanish as an
+              // unhandled rejection with tiles stuck on their spinner.
+              void handleDrop(cat, files).catch(() => {
+                toast.error("Noe gikk galt under behandling av bildene - prøv igjen.");
+                setPending((prev) =>
+                  prev.map((p) => (p.category === cat && p.status === "uploading" ? { ...p, status: "failed" } : p)),
+                );
+              })
+            }
             onDelete={handleDelete}
             onDismissPending={dismissPending}
             localPreviews={localPreviews.current}

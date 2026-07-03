@@ -20,7 +20,7 @@ import { ImageUploadSection } from "@/components/form/ImageUploadSection";
 import { MaskebruddDialog } from "@/components/form/MaskebruddDialog";
 import { ApiError, createReport, downloadPdf, generatePdf, getReport, updateReport, type ReportDetail } from "@/lib/api";
 import { deleteOutboxReport } from "@/offline/db";
-import { queueReportForSync } from "@/offline/syncManager";
+import { queueReportForSync, syncNow } from "@/offline/syncManager";
 import {
   CHECKED_COMMENT_DEFAULTS,
   CHECKED_CONDITION_DEFAULT,
@@ -176,7 +176,11 @@ function toReportInput(v: FormValues): ReportInput {
     currentStrength: v.currentStrength || null,
     visibility: v.visibility || null,
     wildFish: v.wildFish || null,
-    wildFishNote: v.wildFishNote || null,
+    // The note field is hidden when Villfisk is empty/"Ikke observert", but
+    // hiding doesn't clear it - submitting the leftover text produced
+    // contradictory data like "Ikke observert - sei, ca 20 stk" in the PDF.
+    // Mirror the visibility condition (ReportFormPage line ~597).
+    wildFishNote: v.wildFish && v.wildFish !== "Ikke observert" ? v.wildFishNote || null : null,
     growth: v.growth || null,
     comments: v.comments || null,
     inspectionResults: v.inspectionResults,
@@ -197,6 +201,12 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
   const { control, getValues, watch, setValue, reset, formState } = useForm<FormValues>({
     defaultValues: emptyDefaults(),
   });
+  // react-hook-form's formState is a subscription Proxy: a key only starts
+  // being tracked once it's read DURING RENDER. Reading formState.isDirty
+  // exclusively inside the navigation-guard callbacks below meant the
+  // subscription never activated and the guards always saw false - the
+  // whole unsaved-changes protection was inert.
+  const { isDirty } = formState;
 
   // Half-filled reports were silently lost on any navigation (audit
   // finding) - block in-app navigation and tab close while dirty OR while
@@ -205,7 +215,7 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
   // successful save.
   const skipNavGuard = useRef(false);
   const [uploadingPhotos, setUploadingPhotos] = useState(0);
-  const blocker = useBlocker(() => (formState.isDirty || uploadingPhotos > 0) && !skipNavGuard.current);
+  const blocker = useBlocker(() => (isDirty || uploadingPhotos > 0) && !skipNavGuard.current);
   useEffect(() => {
     if (blocker.state === "blocked") {
       const message =
@@ -221,11 +231,11 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
   }, [blocker, uploadingPhotos]);
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if ((formState.isDirty || uploadingPhotos > 0) && !skipNavGuard.current) e.preventDefault();
+      if ((isDirty || uploadingPhotos > 0) && !skipNavGuard.current) e.preventDefault();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [formState, uploadingPhotos]);
+  }, [isDirty, uploadingPhotos]);
 
   const [images, setImages] = useState<ReportImage[]>([]);
   const [savedId, setSavedId] = useState<string | null>(mode === "edit" ? routeId ?? null : null);
@@ -349,20 +359,33 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
     const values = getValues();
     setWarnings(softValidationWarnings(toReportInput(values)));
     setGeneratingPdf(true);
+    // Each stage gets its own error message - "Kunne ikke generere PDF" for
+    // a failed SAVE sent users retrying the PDF instead of fixing the save,
+    // and for a failed DOWNLOAD it hid that the PDF actually exists.
+    let stage: "save" | "generate" | "download" = "save";
     try {
       const result = await persist();
       if (result.offline) {
         toast.error("Rapporten er lagret lokalt (uten nett) - PDF kan genereres når du er tilkoblet igjen.");
         return;
       }
+      // Drain any photos still queued from an offline session first - the
+      // report row just synced, but its outbox photos wait for the next
+      // 45s tick, and a PDF generated in that window would silently miss
+      // them.
+      await syncNow();
+      stage = "generate";
       await generatePdf(result.id);
+      stage = "download";
       await downloadPdf(result.id);
       toast.success("PDF generert og lastet ned");
       skipNavGuard.current = true;
       navigate(`/reports/${result.id}`);
     } catch (err) {
-      if (err instanceof FormValidationError) {
+      if (stage === "save") {
         saveErrorToast(err);
+      } else if (stage === "download") {
+        toast.error("PDF-en ble generert, men nedlastingen feilet - last den ned fra rapportsiden.");
       } else {
         toast.error("Kunne ikke generere PDF. Prøv igjen.");
       }
@@ -633,7 +656,10 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
                 const hasAvvikHeading = /(^|\n)avvik:?\s*$/im.test(comments) || /(^|\n)avvik:?\n/im.test(comments);
                 const prefix = comments.trim() ? comments.trimEnd() + "\n" : "";
                 const heading = hasAvvikHeading || comments.toLowerCase().includes("avvik") ? "" : "Avvik:\n";
-                setValue("comments", `${prefix}${heading}${text}`);
+                // shouldDirty: an inserted maskebrudd is a compliance-
+                // relevant edit - without it the unsaved-changes guard
+                // let the deviation text be discarded without a confirm.
+                setValue("comments", `${prefix}${heading}${text}`, { shouldDirty: true });
               }}
             />
           </AccordionContent>

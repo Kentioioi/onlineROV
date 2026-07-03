@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FileDown, Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, FileDown, Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,6 +48,10 @@ export function ReportDetailPage() {
     onSuccess: () => {
       toast.success("PDF generert");
       queryClient.invalidateQueries({ queryKey: ["report", id] });
+      // The list's "Ingen PDF"/download-button column reads pdfBlobKey from
+      // its own cache - without this, going back to the list within its
+      // staleTime still showed "Ingen PDF" for a report that just got one.
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
     },
     onError: () => toast.error("Kunne ikke generere PDF"),
     onSettled: () => setGenerating(false),
@@ -75,6 +79,29 @@ export function ReportDetailPage() {
       toast.error("Kunne ikke slette rapporten");
       setDeleting(false);
     }
+  }
+
+  // Distinct error state - a failed fetch (dropped signal, deleted report)
+  // previously fell into the `!query.data` arm below and spun "Laster
+  // rapport..." forever with no explanation and no way to retry.
+  if (query.isError) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+        <AlertTriangle className="h-8 w-8 text-amber-500" />
+        <div>
+          <p className="font-medium">Kunne ikke laste rapporten</p>
+          <p className="text-sm text-muted-foreground">Sjekk nettforbindelsen og prøv igjen.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => void query.refetch()}>
+            Prøv igjen
+          </Button>
+          <Button variant="ghost" onClick={() => navigate("/reports")}>
+            Til rapporter
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   if (query.isLoading || !query.data) {

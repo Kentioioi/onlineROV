@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { addFieldOption, deleteFieldOption, listFieldOptions } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { cacheFieldOptions, getCachedFieldOptions } from "@/offline/db";
 import type { FieldKey } from "../../shared/constants";
 
@@ -45,11 +47,19 @@ export function useFieldOptionRows(fieldKey: FieldKey) {
   return { items, ...rest };
 }
 
+// Failures used to be completely silent: the Settings input cleared
+// optimistically, nothing appeared, no toast - the typed value just
+// vanished (worst on the boat, where offline is the norm, not the edge).
+function mutationErrorToast(err: unknown, fallback: string) {
+  toast.error(err instanceof ApiError ? `${fallback}: ${err.message}` : `${fallback} - sjekk nettforbindelsen.`);
+}
+
 export function useAddFieldOption() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ fieldKey, value }: { fieldKey: FieldKey; value: string }) => addFieldOption(fieldKey, value),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
+    onError: (err) => mutationErrorToast(err, "Kunne ikke legge til verdien"),
   });
 }
 
@@ -58,5 +68,6 @@ export function useDeleteFieldOption() {
   return useMutation({
     mutationFn: (id: number) => deleteFieldOption(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
+    onError: (err) => mutationErrorToast(err, "Kunne ikke slette verdien"),
   });
 }
