@@ -6,13 +6,14 @@ import { inspectionResults, reportImages, reports } from "../../db/schema.js";
 import { getReportStore, pdfBlobKey } from "./_shared/blobs.js";
 import { InspectionReportDocument, type ImageWithBytes } from "./_shared/pdf-document.js";
 import { resolveUser, unauthorized } from "./_shared/auth.js";
-import { json, notFound } from "./_shared/http.js";
+import { isUuid, json, notFound } from "./_shared/http.js";
 
 export default async (req: Request, context: Context) => {
   const user = await resolveUser();
   if (!user) return unauthorized();
 
   const { id } = context.params;
+  if (!isUuid(id)) return notFound("Rapport ikke funnet");
 
   const [report] = await db.select().from(reports).where(eq(reports.id, id)).limit(1);
   if (!report) return notFound("Rapport ikke funnet");

@@ -6,7 +6,7 @@ import { ACCEPTED_IMAGE_TYPES, IMAGE_CATEGORIES, MAX_IMAGE_SIZE_BYTES } from "..
 import { getReportStore, imageBlobKey } from "./_shared/blobs.js";
 import { resizeForStorage, UnsupportedImageError } from "./_shared/image.js";
 import { resolveUser, unauthorized } from "./_shared/auth.js";
-import { badRequest, json, notFound } from "./_shared/http.js";
+import { badRequest, isUuid, json, notFound } from "./_shared/http.js";
 import { z } from "zod";
 
 const metaSchema = z.object({
@@ -20,6 +20,7 @@ export default async (req: Request, context: Context) => {
   if (!user) return unauthorized();
 
   const { id: reportId } = context.params;
+  if (!isUuid(reportId)) return notFound("Rapport ikke funnet");
   const [report] = await db.select({ id: reports.id }).from(reports).where(eq(reports.id, reportId)).limit(1);
   if (!report) return notFound("Rapport ikke funnet");
 
@@ -51,6 +52,18 @@ export default async (req: Request, context: Context) => {
     throw err;
   }
 
+  // The upsert-on-id retry path must stay scoped to THIS report - without
+  // this check, re-sending an image id that already belongs to a different
+  // report would silently rebind that report's image (audit finding).
+  const [existingImage] = await db
+    .select({ reportId: reportImages.reportId })
+    .from(reportImages)
+    .where(eq(reportImages.id, imageId))
+    .limit(1);
+  if (existingImage && existingImage.reportId !== reportId) {
+    return badRequest("Bilde-id tilhører en annen rapport");
+  }
+
   const blobKey = imageBlobKey(reportId, category, imageId, "jpg");
   const store = getReportStore();
   // Netlify Blobs set() is a pure overwrite-by-key - a retried upload with
@@ -77,6 +90,10 @@ export default async (req: Request, context: Context) => {
       set: { category, blobKey, originalFilename: file.name, contentType, sizeBytes: buffer.byteLength, sortOrder },
     })
     .returning();
+
+  // Photo changes are report changes - without this, the detail page's
+  // "PDF is stale" warning missed reports whose only edit was photos.
+  await db.update(reports).set({ updatedAt: new Date(), updatedBy: user.id }).where(eq(reports.id, reportId));
 
   return json(row, { status: 201 });
 };

@@ -28,7 +28,9 @@ export default async (req: Request) => {
     .where(and(eq(fieldOptions.fieldKey, fieldKey), eq(fieldOptions.value, value)))
     .limit(1);
 
-  return json(row, { status: 201 });
+  // row can be missing if a concurrent delete raced the insert - fall back
+  // to echoing the input so the client always gets a valid JSON body.
+  return json(row ?? { fieldKey, value }, { status: 201 });
 };
 
 export const config: Config = {

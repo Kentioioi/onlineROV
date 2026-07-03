@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { createBrowserRouter, createRoutesFromElements, Navigate, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { RequireAuth } from "@/components/layout/RequireAuth";
 import { LoginPage } from "@/pages/LoginPage";
@@ -8,9 +8,12 @@ import { ReportDetailPage } from "@/pages/ReportDetailPage";
 import { ReportsListPage } from "@/pages/ReportsListPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
-function App() {
-  return (
-    <Routes>
+// A data router (createBrowserRouter) rather than <BrowserRouter> because
+// the report form's unsaved-changes guard uses useBlocker, which only works
+// with data routers.
+export const router = createBrowserRouter(
+  createRoutesFromElements(
+    <>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>
@@ -23,8 +26,6 @@ function App() {
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
-}
-
-export default App;
+    </>,
+  ),
+);

@@ -10,13 +10,14 @@ import {
 } from "../../shared/constants.js";
 import { reportInputSchema } from "../../shared/schema.js";
 import { resolveUser, unauthorized } from "./_shared/auth.js";
-import { badRequest, json, notFound } from "./_shared/http.js";
+import { badRequest, isUuid, json, notFound } from "./_shared/http.js";
 
 export default async (req: Request, context: Context) => {
   const user = await resolveUser();
   if (!user) return unauthorized();
 
   const { id } = context.params;
+  if (!isUuid(id)) return notFound("Rapport ikke funnet");
   const body = await req.json().catch(() => null);
   const parsed = reportInputSchema.safeParse({ ...body, id });
   if (!parsed.success) return badRequest("Ugyldig rapport", parsed.error.flatten());

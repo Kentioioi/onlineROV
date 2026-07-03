@@ -1,10 +1,11 @@
 import { createReport, uploadImage, ApiError } from "@/lib/api";
 import {
+  cleanupSyncedOutbox,
   countPending,
+  deleteOutboxImage,
   getOfflineDb,
   listPendingOutboxImages,
   listPendingOutboxReports,
-  markImageSynced,
   markReportSynced,
   saveOutboxImage,
   saveOutboxReport,
@@ -44,6 +45,16 @@ export async function syncNow(): Promise<void> {
     for (const record of pendingReports) {
       await syncReport(record);
     }
+    // Drain images whose parent report is NOT pending in the outbox - the
+    // report already exists server-side, either because it was created
+    // online (never entered the outbox) and only the photo upload hit a
+    // network failure, or because an earlier sync run created the report
+    // but died mid-image-batch. Without this sweep such photos stayed
+    // queued in IndexedDB forever with the badge stuck at "N venter".
+    const stillPending = new Set((await listPendingOutboxReports()).map((r) => r.id));
+    const stranded = (await listPendingOutboxImages()).filter((img) => !stillPending.has(img.reportId));
+    await uploadWithConcurrency(stranded);
+    await cleanupSyncedOutbox();
   } finally {
     syncing = false;
     notifyPendingChanged();
@@ -72,7 +83,10 @@ async function syncReport(record: OutboxReport): Promise<void> {
 }
 
 async function syncImagesForReport(reportId: string): Promise<void> {
-  const images = await listPendingOutboxImages(reportId);
+  await uploadWithConcurrency(await listPendingOutboxImages(reportId));
+}
+
+async function uploadWithConcurrency(images: OutboxImage[]): Promise<void> {
   // Limited concurrency (3 at a time) so a weak boat connection isn't
   // saturated by a burst of large uploads all at once.
   const CONCURRENCY = 3;
@@ -100,7 +114,9 @@ async function syncImage(record: OutboxImage): Promise<void> {
       filename: record.originalFilename,
       sortOrder: record.sortOrder,
     });
-    await markImageSynced(record.id);
+    // Delete rather than mark-synced: frees the photo blob from IndexedDB
+    // immediately (storage pressure matters on iOS).
+    await deleteOutboxImage(record.id);
   } catch (err) {
     record.syncState = "sync_failed";
     record.syncErrorMessage = errorMessage(err);

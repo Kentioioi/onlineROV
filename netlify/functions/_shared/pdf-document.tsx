@@ -2,6 +2,7 @@ import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/render
 import type { InspectionResult, Report, ReportImage } from "../../../db/schema.js";
 import { CATEGORY_LABELS, INSPECTION_CATEGORIES, type InspectionCategory } from "../../../shared/constants.js";
 import { LOGO_PNG_BASE64 } from "./logo.js";
+import { formatDateNo } from "../../../shared/format.js";
 
 // Colors extracted directly from the real master template's XML
 // (rov_inspector/assets/Inspeksjonsdokument_MASTER.docx, word/document.xml
@@ -171,7 +172,7 @@ export function InspectionReportDocument({
         <View style={styles.titleRule} />
 
         <View style={styles.table}>
-          <LabelValueRow label1="Dato" value1={report.date} label2="Fartøy" value2={report.vessel ?? ""} />
+          <LabelValueRow label1="Dato" value1={formatDateNo(report.date)} label2="Fartøy" value2={report.vessel ?? ""} />
           <LabelValueRow
             label1="Tid fra-til"
             value1={fmtTime(report.timeFrom, report.timeTo)}

@@ -12,8 +12,10 @@ export default async (req: Request) => {
   const url = new URL(req.url);
   const p = url.searchParams;
 
-  const page = Math.max(1, Number(p.get("page") ?? "1") || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(p.get("page_size") ?? "25") || 25));
+  // Math.floor: fractional values would reach Postgres LIMIT/OFFSET and
+  // error out as a 500.
+  const page = Math.max(1, Math.floor(Number(p.get("page") ?? "1")) || 1);
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number(p.get("page_size") ?? "25")) || 25));
 
   const conditions = [];
   const dateFrom = p.get("date_from");

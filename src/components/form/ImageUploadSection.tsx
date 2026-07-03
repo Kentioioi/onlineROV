@@ -84,6 +84,9 @@ export function ImageUploadSection({
   );
 
   async function handleDelete(image: ReportImage) {
+    // Deleting is instant and irreversible server-side - confirm first
+    // (audit: invisible hover-only button erased photos with no undo).
+    if (!window.confirm("Slette bildet? Dette kan ikke angres.")) return;
     onImagesChange((prev) => prev.filter((i) => i.id !== image.id));
     try {
       await deleteImage(reportId, image.id);
@@ -168,12 +171,15 @@ function CategoryDropzone({
           {images.map((img) => (
             <div key={img.id} className="group relative aspect-square overflow-hidden rounded-md border">
               <img src={imageUrl(img.id)} alt={img.originalFilename ?? ""} className="h-full w-full object-cover" />
+              {/* Always visible - hover-only controls don't exist on touch
+                  screens, which made photos undeletable on phones. */}
               <button
                 type="button"
                 onClick={() => onDelete(img)}
-                className="absolute top-1 right-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                aria-label="Slett bilde"
+                className="absolute top-1 right-1 rounded-full bg-black/60 p-1.5 text-white"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ))}

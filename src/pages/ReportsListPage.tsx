@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { downloadPdf, listReports, type ReportListFilters } from "@/lib/api";
+import { formatDateNo } from "../../shared/format";
 
 const PAGE_SIZE = 20;
 
@@ -101,7 +102,7 @@ export function ReportsListPage() {
                       {r.reportNumber}
                     </Link>
                   </TableCell>
-                  <TableCell>{r.date}</TableCell>
+                  <TableCell>{formatDateNo(r.date)}</TableCell>
                   <TableCell>{r.location || "-"}</TableCell>
                   <TableCell>{r.merdNumber || "-"}</TableCell>
                   <TableCell>{r.reason || "-"}</TableCell>
@@ -125,7 +126,7 @@ export function ReportsListPage() {
               <div key={r.id} className="relative rounded-lg border p-3 active:bg-muted">
                 <Link to={`/reports/${r.id}`} className="block pr-20">
                   <span className="font-medium">Rapport nr. {r.reportNumber}</span>
-                  <p className="text-sm text-muted-foreground">{r.date}</p>
+                  <p className="text-sm text-muted-foreground">{formatDateNo(r.date)}</p>
                   <p className="mt-1 text-sm">
                     {r.location || "-"}
                     {r.merdNumber ? ` · ${r.merdNumber}` : ""}

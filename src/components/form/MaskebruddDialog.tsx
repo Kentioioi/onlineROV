@@ -28,6 +28,7 @@ export function MaskebruddDialog({
   const [sizeY, setSizeY] = useState("");
   const [depth, setDepth] = useState("");
   const [escapeRisk, setEscapeRisk] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const x = Number(sizeX);
   const y = Number(sizeY);
@@ -38,6 +39,7 @@ export function MaskebruddDialog({
     setSizeY("");
     setDepth("");
     setEscapeRisk(null);
+    setError(null);
   }
 
   function handleSubmit() {
@@ -47,7 +49,13 @@ export function MaskebruddDialog({
       depth: Number(depth),
       escapeRisk,
     });
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      // A silent no-op here left users mashing a button that "did nothing"
+      // (audit finding) - name the actual problem instead.
+      setError("Størrelse X og Y må være hele tall, og dybde må være større enn 0.");
+      return;
+    }
+    setError(null);
 
     onInsert(formatMaskebruddText(parsed.data));
     if (needsEscapeRisk && escapeRisk) {
@@ -115,6 +123,7 @@ export function MaskebruddDialog({
             </div>
           )}
         </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Avbryt

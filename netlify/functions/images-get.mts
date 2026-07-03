@@ -4,7 +4,7 @@ import { db } from "../../db/index.js";
 import { reportImages } from "../../db/schema.js";
 import { getReportStore } from "./_shared/blobs.js";
 import { resolveUser, unauthorized } from "./_shared/auth.js";
-import { notFound } from "./_shared/http.js";
+import { isUuid, notFound } from "./_shared/http.js";
 
 // Netlify Blobs has no public-URL primitive, so serving an image back to the
 // browser goes through this authenticated proxy rather than a direct link.
@@ -13,6 +13,7 @@ export default async (req: Request, context: Context) => {
   if (!user) return unauthorized();
 
   const { imageId } = context.params;
+  if (!isUuid(imageId)) return notFound("Bilde ikke funnet");
   const [row] = await db.select().from(reportImages).where(eq(reportImages.id, imageId)).limit(1);
   if (!row) return notFound("Bilde ikke funnet");
 

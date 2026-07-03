@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -19,6 +19,7 @@ import { InspectionResultsSection, type FormInspectionResult } from "@/component
 import { ImageUploadSection } from "@/components/form/ImageUploadSection";
 import { MaskebruddDialog } from "@/components/form/MaskebruddDialog";
 import { ApiError, createReport, downloadPdf, generatePdf, getReport, updateReport, type ReportDetail } from "@/lib/api";
+import { markReportSynced } from "@/offline/db";
 import { queueReportForSync } from "@/offline/syncManager";
 import {
   CHECKED_COMMENT_DEFAULTS,
@@ -57,7 +58,31 @@ type FormValues = {
 };
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Local date, NOT toISOString() (UTC) - a report started 00:30 Norway
+  // time must not default to yesterday's date.
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Norwegian labels for zod-rejected fields so a validation failure names the
+// actual problem instead of a generic "try again".
+const FIELD_LABELS: Record<string, string> = {
+  date: "Dato",
+  timeFrom: "Tid fra",
+  timeTo: "Tid til",
+  sizeX: "Størrelse x",
+  sizeY: "Størrelse y",
+  depth: "Dybde",
+  deadFishCount: "Død fisk",
+  inspectionResults: "Inspeksjonsresultater",
+};
+
+class FormValidationError extends Error {
+  fields: string[];
+  constructor(fields: string[]) {
+    super("Validation failed");
+    this.fields = fields;
+  }
 }
 
 function emptyDefaults(): FormValues {
@@ -146,7 +171,7 @@ function toReportInput(v: FormValues): ReportInput {
     sizeX: v.sizeX ? Number(v.sizeX) : null,
     sizeY: v.sizeY ? Number(v.sizeY) : null,
     depth: v.depth ? Number(v.depth) : null,
-    deadFishCount: v.deadFishCount ? Number(v.deadFishCount) : null,
+    deadFishCount: v.deadFishCount ? Math.round(Number(v.deadFishCount)) : null,
     deadFishApprox: v.deadFishApprox,
     currentStrength: v.currentStrength || null,
     visibility: v.visibility || null,
@@ -169,9 +194,31 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
     enabled: mode === "edit" && !!routeId,
   });
 
-  const { control, getValues, watch, setValue, reset } = useForm<FormValues>({
+  const { control, getValues, watch, setValue, reset, formState } = useForm<FormValues>({
     defaultValues: emptyDefaults(),
   });
+
+  // Half-filled reports were silently lost on any navigation (audit
+  // finding) - block in-app navigation and tab close while dirty, except
+  // right after a successful save.
+  const skipNavGuard = useRef(false);
+  const blocker = useBlocker(() => formState.isDirty && !skipNavGuard.current);
+  useEffect(() => {
+    if (blocker.state === "blocked") {
+      if (window.confirm("Rapporten har ulagrede endringer. Forlate siden uten å lagre?")) {
+        blocker.proceed();
+      } else {
+        blocker.reset();
+      }
+    }
+  }, [blocker]);
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (formState.isDirty && !skipNavGuard.current) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [formState]);
 
   const [images, setImages] = useState<ReportImage[]>([]);
   const [savedId, setSavedId] = useState<string | null>(mode === "edit" ? routeId ?? null : null);
@@ -181,8 +228,12 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [offlineQueued, setOfflineQueued] = useState(false);
 
+  // Guard the reset so a background refetch (window refocus etc.) can't
+  // clobber in-progress edits - only reset when a different report loads.
+  const lastResetId = useRef<string | null>(null);
   useEffect(() => {
-    if (mode === "edit" && reportQuery.data) {
+    if (mode === "edit" && reportQuery.data && reportQuery.data.id !== lastResetId.current) {
+      lastResetId.current = reportQuery.data.id;
       reset(fromReportDetail(reportQuery.data));
       setImages(reportQuery.data.images);
       setSavedId(reportQuery.data.id);
@@ -191,19 +242,35 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
 
   const persist = useCallback(async (): Promise<{ id: string; reportNumber: number | null; offline: boolean }> => {
     const values = getValues();
-    const input = reportInputSchema.parse(toReportInput(values));
+    const parsed = reportInputSchema.safeParse(toReportInput(values));
+    if (!parsed.success) {
+      const fields = [...new Set(parsed.error.issues.map((i) => FIELD_LABELS[String(i.path[0])] ?? String(i.path[0])))];
+      throw new FormValidationError(fields);
+    }
+    const input = parsed.data;
 
-    if (savedId) {
+    if (savedId && !offlineQueued) {
       // Editing an already-synced report requires connectivity (offline v1
       // scope: create-only offline, edit is view-only when offline) - let a
       // network failure here propagate as a real error, not a silent queue.
       const result = await updateReport(savedId, input);
       queryClient.invalidateQueries({ queryKey: ["reports"] });
+      queryClient.invalidateQueries({ queryKey: ["report", savedId] });
       return { id: result.id, reportNumber: result.reportNumber, offline: false };
     }
 
+    // First save, OR a re-save of a report that only exists in the offline
+    // outbox so far. Both go through createReport: it's idempotent on the
+    // client-generated id, and an offline-queued report has NO server row
+    // yet - routing a re-save to updateReport would 404 (audit finding).
     try {
       const result = await createReport(input);
+      if (offlineQueued) {
+        // The outbox entry now has a server row - mark it done so the
+        // background sync doesn't re-POST stale data.
+        await markReportSynced(input.id, result.reportNumber);
+        setOfflineQueued(false);
+      }
       setSavedId(result.id);
       queryClient.invalidateQueries({ queryKey: ["reports"] });
       return { id: result.id, reportNumber: result.reportNumber, offline: false };
@@ -211,18 +278,29 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
       if (err instanceof ApiError) throw err;
       // Network failure, not a server rejection - queue for background
       // sync instead of losing the report. reports-create is idempotent on
-      // `id`, so this is safe to retry later without creating a duplicate.
+      // `id`, and queueReportForSync overwrites by id, so re-saving an
+      // already-queued draft just refreshes the queued data.
       await queueReportForSync(input.id, input);
       setSavedId(input.id);
       setOfflineQueued(true);
       return { id: input.id, reportNumber: null, offline: true };
     }
-  }, [getValues, savedId, queryClient]);
+  }, [getValues, savedId, offlineQueued, queryClient]);
 
   const ensureSaved = useCallback(async () => {
     if (savedId) return;
     await persist();
   }, [savedId, persist]);
+
+  function saveErrorToast(err: unknown) {
+    if (err instanceof FormValidationError) {
+      toast.error(`Ugyldige verdier i: ${err.fields.join(", ")}`);
+    } else if (err instanceof ApiError) {
+      toast.error(`Kunne ikke lagre: ${err.message}`);
+    } else {
+      toast.error("Kunne ikke lagre rapporten. Prøv igjen.");
+    }
+  }
 
   async function onSave() {
     const values = getValues();
@@ -231,6 +309,7 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
     setSaving(true);
     try {
       const result = await persist();
+      skipNavGuard.current = true;
       if (result.offline) {
         toast.success("Rapport lagret lokalt - synkroniseres automatisk når du får nettforbindelse.");
         navigate("/");
@@ -238,8 +317,8 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
         toast.success(mode === "create" ? `Rapport lagret - nr. ${result.reportNumber}` : "Rapport oppdatert");
         navigate(`/reports/${result.id}`);
       }
-    } catch {
-      toast.error("Kunne ikke lagre rapporten. Prøv igjen.");
+    } catch (err) {
+      saveErrorToast(err);
     } finally {
       setSaving(false);
     }
@@ -263,9 +342,14 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
       await generatePdf(result.id);
       await downloadPdf(result.id);
       toast.success("PDF generert og lastet ned");
+      skipNavGuard.current = true;
       navigate(`/reports/${result.id}`);
-    } catch {
-      toast.error("Kunne ikke generere PDF. Prøv igjen.");
+    } catch (err) {
+      if (err instanceof FormValidationError) {
+        saveErrorToast(err);
+      } else {
+        toast.error("Kunne ikke generere PDF. Prøv igjen.");
+      }
     } finally {
       setGeneratingPdf(false);
     }
@@ -285,7 +369,7 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
 
   function updateResult(category: InspectionCategory, patch: Partial<FormInspectionResult>) {
     const next = inspectionResults.map((r) => (r.category === category ? { ...r, ...patch } : r));
-    setValue("inspectionResults", next);
+    setValue("inspectionResults", next, { shouldDirty: true });
   }
 
   if (mode === "edit" && reportQuery.isLoading) {
@@ -461,6 +545,15 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
                   render={({ field }) => <SelectField fieldKey="wild_fish" value={field.value} onChange={field.onChange} />}
                 />
               </Field>
+              {watch("wildFish") && watch("wildFish") !== "Ikke observert" && (
+                <Field label="Villfisk - notat (art/antall)">
+                  <Controller
+                    control={control}
+                    name="wildFishNote"
+                    render={({ field }) => <Input placeholder="F.eks. sei, ca 20 stk" {...field} />}
+                  />
+                </Field>
+              )}
               <Field label="Groe">
                 <Controller
                   control={control}

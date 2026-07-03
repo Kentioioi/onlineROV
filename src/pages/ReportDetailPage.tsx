@@ -1,13 +1,26 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FileDown, Loader2, Pencil, RefreshCw } from "lucide-react";
+import { FileDown, Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { downloadPdf, generatePdf, getReport, imageUrl } from "@/lib/api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { deleteReport, downloadPdf, generatePdf, getReport, imageUrl } from "@/lib/api";
 import { CATEGORY_LABELS, IMAGE_CATEGORIES, INSPECTION_CATEGORIES } from "../../shared/constants";
+import { formatDateNo } from "../../shared/format";
 
 function DetailRow({ label, value }: { label: string; value: string | null | undefined }) {
   return (
@@ -20,9 +33,12 @@ function DetailRow({ label, value }: { label: string; value: string | null | und
 
 export function ReportDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [generating, setGenerating] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [lightbox, setLightbox] = useState<{ id: string; name: string } | null>(null);
 
   const query = useQuery({ queryKey: ["report", id], queryFn: () => getReport(id!), enabled: !!id });
 
@@ -48,6 +64,19 @@ export function ReportDetailPage() {
     }
   }
 
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await deleteReport(id!);
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      toast.success("Rapport slettet");
+      navigate("/reports");
+    } catch {
+      toast.error("Kunne ikke slette rapporten");
+      setDeleting(false);
+    }
+  }
+
   if (query.isLoading || !query.data) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
@@ -66,7 +95,7 @@ export function ReportDetailPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">Rapport nr. {report.reportNumber}</h1>
-          <p className="text-sm text-muted-foreground">{report.date}</p>
+          <p className="text-sm text-muted-foreground">{formatDateNo(report.date)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link to={`/reports/${report.id}/edit`}>
@@ -84,6 +113,28 @@ export function ReportDetailPage() {
             {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {report.pdfBlobKey ? "Regenerer PDF" : "Generer PDF"}
           </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="text-destructive hover:text-destructive" disabled={deleting}>
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Slett
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Slette rapport nr. {report.reportNumber}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Rapporten, alle bilder og PDF-en slettes permanent. Dette kan ikke angres.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Avbryt</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} className="bg-destructive text-white hover:bg-destructive/90">
+                  Slett rapporten
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
@@ -173,12 +224,19 @@ export function ReportDetailPage() {
                   <p className="mb-2 text-sm font-medium">{CATEGORY_LABELS[cat]}</p>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                     {catImages.map((img) => (
-                      <img
+                      <button
                         key={img.id}
-                        src={imageUrl(img.id)}
-                        alt={img.originalFilename ?? ""}
-                        className="aspect-square rounded-md border object-cover"
-                      />
+                        type="button"
+                        onClick={() => setLightbox({ id: img.id, name: img.originalFilename ?? "" })}
+                        className="overflow-hidden rounded-md border"
+                        aria-label={`Vis bilde ${img.originalFilename ?? ""}`}
+                      >
+                        <img
+                          src={imageUrl(img.id)}
+                          alt={img.originalFilename ?? ""}
+                          className="aspect-square h-full w-full object-cover"
+                        />
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -187,6 +245,15 @@ export function ReportDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={!!lightbox} onOpenChange={(open) => !open && setLightbox(null)}>
+        <DialogContent className="max-w-3xl p-2">
+          <DialogTitle className="sr-only">{lightbox?.name || "Bilde"}</DialogTitle>
+          {lightbox && (
+            <img src={imageUrl(lightbox.id)} alt={lightbox.name} className="max-h-[80vh] w-full rounded object-contain" />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

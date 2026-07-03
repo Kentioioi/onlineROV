@@ -15,13 +15,24 @@ export const inspectionResultInputSchema = z.object({
 });
 export type InspectionResultInput = z.infer<typeof inspectionResultInputSchema>;
 
+// Postgres `date`/`time` columns reject malformed strings with an error the
+// API surfaced as a 500 - validate the shape here so bad values become a
+// clear 400 instead. Time accepts "HH:MM" or "HH:MM:SS" (what <input
+// type=time> produces).
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Dato må være på formen ÅÅÅÅ-MM-DD");
+const timeOfDay = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Tid må være på formen TT:MM")
+  .nullable()
+  .optional();
+
 export const reportInputSchema = z.object({
   // Client-generated uuid - the offline-sync idempotency key (see plan).
   id: z.uuid(),
-  date: z.string().min(1, "Dato er påkrevd"),
+  date: isoDate,
   vessel: z.string().nullable().optional(),
-  timeFrom: z.string().nullable().optional(),
-  timeTo: z.string().nullable().optional(),
+  timeFrom: timeOfDay,
+  timeTo: timeOfDay,
   projectLeader: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
   rovOperator: z.string().nullable().optional(),
@@ -42,9 +53,15 @@ export const reportInputSchema = z.object({
 
   comments: z.string().nullable().optional(),
 
-  // Always exactly 5 rows, one per fixed category - enforced by length +
-  // the unique(report_id, category) constraint at the DB layer.
-  inspectionResults: z.array(inspectionResultInputSchema).length(5),
+  // Always exactly 5 rows, one per fixed category. Uniqueness enforced here
+  // too - a duplicated category would otherwise hit the DB's unique
+  // constraint and surface as a 500 instead of a 400.
+  inspectionResults: z
+    .array(inspectionResultInputSchema)
+    .length(5)
+    .refine((rows) => new Set(rows.map((r) => r.category)).size === rows.length, {
+      message: "Hver inspeksjonskategori kan bare forekomme én gang",
+    }),
 });
 export type ReportInput = z.infer<typeof reportInputSchema>;
 

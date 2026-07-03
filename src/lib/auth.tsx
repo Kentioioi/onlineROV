@@ -119,10 +119,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
         }
       } catch {
-        // Session check itself failed (flaky/absent network) - same
-        // offline-trusted fallback rather than a dead end or a stuck
-        // "Laster..." screen.
-        if (!navigator.onLine) setUser(readCachedUser());
+        // Session check THREW - that's a network/transport failure, not a
+        // clean "no session" answer. Trust the cached user regardless of
+        // navigator.onLine: a boat LAN with no internet uplink reports
+        // onLine=true but still can't reach Identity, and gating on the
+        // flag locked legitimate users out (audit finding). A genuine dead
+        // session still gets caught by the first real 401 below.
+        setUser(readCachedUser());
       } finally {
         setLoading(false);
       }
@@ -180,6 +183,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await identityLogout();
       setUser(null);
       writeCachedUser(null);
+      // Purge service-worker caches of authenticated API responses so
+      // report data and photos don't linger on a shared device after
+      // logging out (audit finding).
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter((k) => k.startsWith("api-")).map((k) => caches.delete(k)));
+      } catch {
+        // Cache API unavailable - nothing to purge.
+      }
     },
     acceptInvite: async (password) => {
       if (pendingAction?.type !== "invite") throw new Error("No pending invite");

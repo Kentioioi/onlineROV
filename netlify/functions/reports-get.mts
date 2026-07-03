@@ -3,13 +3,14 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { inspectionResults, reportImages, reports } from "../../db/schema.js";
 import { resolveUser, unauthorized } from "./_shared/auth.js";
-import { json, notFound } from "./_shared/http.js";
+import { isUuid, json, notFound } from "./_shared/http.js";
 
 export default async (req: Request, context: Context) => {
   const user = await resolveUser();
   if (!user) return unauthorized();
 
   const { id } = context.params;
+  if (!isUuid(id)) return notFound("Rapport ikke funnet");
 
   const [report, results, images] = await Promise.all([
     db.select().from(reports).where(eq(reports.id, id)).limit(1),

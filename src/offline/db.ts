@@ -66,6 +66,12 @@ export function getOfflineDb(): Promise<IDBPDatabase<RovInspectorDb>> {
         options.createIndex("fieldKey", "fieldKey");
       },
     });
+    // A transiently failed open (e.g. storage pressure) must not be cached
+    // forever - clear so the next call retries instead of permanently
+    // disabling all offline functionality for the session.
+    dbPromise.catch(() => {
+      dbPromise = null;
+    });
   }
   return dbPromise;
 }
@@ -107,13 +113,31 @@ export async function listPendingOutboxImages(reportId?: string): Promise<Outbox
   return all.filter((i) => i.syncState !== "synced");
 }
 
-export async function markImageSynced(id: string): Promise<void> {
+export async function deleteOutboxImage(id: string): Promise<void> {
   const db = await getOfflineDb();
-  const record = await db.get("outbox_images", id);
-  if (!record) return;
-  record.syncState = "synced";
-  record.syncErrorMessage = null;
-  await db.put("outbox_images", record);
+  await db.delete("outbox_images", id);
+}
+
+/**
+ * Removes fully-completed work from IndexedDB: synced report records whose
+ * images are all uploaded, and any leftover synced image records. Without
+ * this the outbox (including full-size photo blobs) grew forever - a real
+ * storage-pressure problem on iOS, where eviction nukes the whole DB.
+ */
+export async function cleanupSyncedOutbox(): Promise<void> {
+  const db = await getOfflineDb();
+  const [reports, images] = await Promise.all([db.getAll("outbox_reports"), db.getAll("outbox_images")]);
+  const reportIdsWithImages = new Set(images.filter((i) => i.syncState !== "synced").map((i) => i.reportId));
+  const tx = db.transaction(["outbox_reports", "outbox_images"], "readwrite");
+  for (const img of images) {
+    if (img.syncState === "synced") void tx.objectStore("outbox_images").delete(img.id);
+  }
+  for (const r of reports) {
+    if (r.syncState === "synced" && !reportIdsWithImages.has(r.id)) {
+      void tx.objectStore("outbox_reports").delete(r.id);
+    }
+  }
+  await tx.done;
 }
 
 export async function cacheFieldOptions(options: FieldOption[]): Promise<void> {
