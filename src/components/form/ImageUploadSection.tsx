@@ -5,6 +5,7 @@ import { CloudOff, Loader2, Upload, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ApiError, deleteImage, imageUrl, uploadImage } from "@/lib/api";
+import { compressImageForUpload } from "@/lib/compress-image";
 import { queueImageForSync } from "@/offline/syncManager";
 import { CATEGORY_LABELS, IMAGE_CATEGORIES, type ImageCategory } from "../../../shared/constants";
 import type { ReportImage } from "../../../db/schema";
@@ -45,16 +46,20 @@ export function ImageUploadSection({
       }
       for (const file of files) {
         const localId = crypto.randomUUID();
-        const previewUrl = URL.createObjectURL(file);
+        // Compress BEFORE upload - raw phone photos routinely exceed Netlify
+        // Functions' 6MB body limit, so uncompressed uploads fail at the
+        // platform layer (the "photos not showing / count stuck" bug).
+        const { blob, filename } = await compressImageForUpload(file);
+        const previewUrl = URL.createObjectURL(blob);
         setPending((prev) => [...prev, { localId, category, previewUrl, status: "uploading" }]);
         try {
-          const row = await uploadImage(reportId, { id: localId, category, file, filename: file.name });
+          const row = await uploadImage(reportId, { id: localId, category, file: blob, filename });
           onImagesChange((prev) => [...prev, row]);
           setPending((prev) => prev.filter((p) => p.localId !== localId));
           URL.revokeObjectURL(previewUrl);
         } catch (err) {
           if (err instanceof ApiError) {
-            toast.error(`Opplasting feilet: ${file.name}`);
+            toast.error(`Opplasting feilet: ${err.message || filename}`);
             setPending((prev) => prev.filter((p) => p.localId !== localId));
             URL.revokeObjectURL(previewUrl);
             continue;
@@ -66,9 +71,9 @@ export function ImageUploadSection({
             id: localId,
             reportId,
             category,
-            blob: file,
-            originalFilename: file.name,
-            contentType: file.type,
+            blob,
+            originalFilename: filename,
+            contentType: blob.type || file.type,
             sortOrder: 0,
           });
           setPending((prev) => prev.map((p) => (p.localId === localId ? { ...p, status: "queued-offline" } : p)));

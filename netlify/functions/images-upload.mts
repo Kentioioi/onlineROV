@@ -4,7 +4,7 @@ import { db } from "../../db/index.js";
 import { reportImages, reports } from "../../db/schema.js";
 import { ACCEPTED_IMAGE_TYPES, IMAGE_CATEGORIES, MAX_IMAGE_SIZE_BYTES } from "../../shared/constants.js";
 import { getReportStore, imageBlobKey } from "./_shared/blobs.js";
-import { resizeForStorage } from "./_shared/image.js";
+import { resizeForStorage, UnsupportedImageError } from "./_shared/image.js";
 import { resolveUser, unauthorized } from "./_shared/auth.js";
 import { badRequest, json, notFound } from "./_shared/http.js";
 import { z } from "zod";
@@ -40,7 +40,16 @@ export default async (req: Request, context: Context) => {
   if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) return badRequest(`Filtype ${file.type} støttes ikke`);
 
   const originalBytes = await file.arrayBuffer();
-  const { buffer, contentType } = await resizeForStorage(originalBytes);
+  let buffer: Buffer;
+  let contentType: string;
+  try {
+    ({ buffer, contentType } = await resizeForStorage(originalBytes));
+  } catch (err) {
+    if (err instanceof UnsupportedImageError) {
+      return badRequest("Bildeformatet støttes ikke - bruk JPEG eller PNG");
+    }
+    throw err;
+  }
 
   const blobKey = imageBlobKey(reportId, category, imageId, "jpg");
   const store = getReportStore();

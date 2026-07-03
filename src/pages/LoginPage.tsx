@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { AuthError } from "@netlify/identity";
 import { Waves } from "lucide-react";
@@ -100,6 +100,18 @@ function LoginForm({ login }: { login: (email: string, password: string) => Prom
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [online, setOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -127,6 +139,12 @@ function LoginForm({ login }: { login: (email: string, password: string) => Prom
           <CardDescription>Logg inn for å registrere eller se inspeksjonsrapporter</CardDescription>
         </CardHeader>
         <CardContent>
+          {!online && (
+            <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Du er offline - innlogging krever nettforbindelse. Har du logget inn på denne enheten før, åpnes appen
+              automatisk uten innlogging når du starter den offline.
+            </p>
+          )}
           <form className="grid gap-4" onSubmit={handleSubmit}>
             <div className="grid gap-1.5">
               <Label htmlFor="email">E-post</Label>

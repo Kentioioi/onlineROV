@@ -111,7 +111,10 @@ async function syncImage(record: OutboxImage): Promise<void> {
 }
 
 function errorMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
+  if (err instanceof ApiError) {
+    if (err.status === 401) return "Du må logge inn på nytt for å synkronisere";
+    return err.message;
+  }
   if (err instanceof TypeError) return "Ingen nettverksforbindelse";
   return "Ukjent feil";
 }

@@ -12,12 +12,22 @@ export class ApiError extends Error {
   }
 }
 
+// A real 401 from our own API is the one authoritative "session is dead"
+// signal - AuthProvider listens for this, clears the trusted session, and
+// tells the user explicitly instead of every request quietly failing.
+// (Network failures throw TypeError before reaching here and are NOT
+// logouts - being offline must never kick the user out.)
+function notifyUnauthorized(): void {
+  window.dispatchEvent(new Event("auth:unauthorized"));
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     headers: { ...(init?.body && !(init.body instanceof FormData) ? { "content-type": "application/json" } : {}), ...init?.headers },
   });
   if (!res.ok) {
+    if (res.status === 401) notifyUnauthorized();
     let body: { error?: string; details?: unknown } = {};
     try {
       body = await res.json();
@@ -125,6 +135,7 @@ function filenameFromContentDisposition(header: string | null, fallback: string)
 export async function downloadPdf(reportId: string): Promise<void> {
   const res = await fetch(pdfDownloadUrl(reportId));
   if (!res.ok) {
+    if (res.status === 401) notifyUnauthorized();
     let message = res.statusText;
     try {
       message = (await res.json()).error ?? message;
