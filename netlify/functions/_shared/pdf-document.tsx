@@ -21,18 +21,19 @@ const COMMENTS_GRAY = "#BFBFBF"; // Kommentar/Avvik content box
 const IMAGES_PEACH = "#F7CAAC"; // Bilder: header bar
 const BORDER = "#7F7F7F";
 
-// Page margins and table widths match the master template's exact XML
-// values (word/document.xml <w:pgMar>/<w:tblGrid>), not eyeballed: A4 with
-// true 1in (72pt) margins on all sides, and every table except the Bilder
-// section sits at ~94% of the content width (8480-8507 of 9026 dxa),
-// not the full page width.
+// Page margins match the master template's exact XML values
+// (word/document.xml <w:pgMar>): A4 with true 1in (72pt) margins on all
+// sides. The master's tables sit at ~94% of the content width, but the
+// user preferred full-width tables aligned with the title rule, footer and
+// Bilder bar, so every block spans 100% here. Column ratios inside the
+// tables still mirror the master's dxa proportions.
 const styles = StyleSheet.create({
   page: { padding: 72, fontSize: 9, fontFamily: "Helvetica", color: "#1a1a1a" },
   logo: { width: 130, marginBottom: 8 },
   title: { fontSize: 16, fontFamily: "Helvetica-Bold", marginBottom: 4 },
   titleRule: { borderBottomWidth: 1, borderBottomColor: "#1a1a1a", marginBottom: 10 },
 
-  table: { width: "94%", borderWidth: 0.5, borderColor: BORDER, marginBottom: 10 },
+  table: { width: "100%", borderWidth: 0.5, borderColor: BORDER, marginBottom: 10 },
   row: { flexDirection: "row", borderBottomWidth: 0.5, borderBottomColor: BORDER },
   rowLast: { flexDirection: "row" },
   cellLabel: {
@@ -46,7 +47,7 @@ const styles = StyleSheet.create({
   cellValueLast: { width: "28%", padding: 4, backgroundColor: VALUE_BLUE },
 
   sectionBar: {
-    width: "94%",
+    width: "100%",
     backgroundColor: HEADER_BLUE,
     padding: 4,
     fontFamily: "Helvetica-Bold",
@@ -58,7 +59,7 @@ const styles = StyleSheet.create({
   // with the two body columns beneath it, instead of a literal run of
   // spaces pushing the second heading "roughly" into place.
   sectionBarSplit: {
-    width: "94%",
+    width: "100%",
     flexDirection: "row",
     backgroundColor: HEADER_BLUE,
     borderWidth: 0.5,
@@ -66,12 +67,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   sectionBarCell: { width: "50%", padding: 4, fontFamily: "Helvetica-Bold" },
-  cageBody: { width: "94%", flexDirection: "row", borderWidth: 0.5, borderColor: BORDER, marginBottom: 10 },
+  cageBody: { width: "100%", flexDirection: "row", borderWidth: 0.5, borderColor: BORDER, marginBottom: 10 },
   cageCol: { width: "50%", backgroundColor: BODY_BLUE, padding: 6 },
   cageColBorder: { borderRightWidth: 0.5, borderRightColor: BORDER },
   cageLine: { marginBottom: 2 },
 
-  resultsHeaderRow: { width: "94%", flexDirection: "row", backgroundColor: RESULTS_HEADER_GRAY, borderWidth: 0.5, borderColor: BORDER },
+  resultsHeaderRow: { width: "100%", flexDirection: "row", backgroundColor: RESULTS_HEADER_GRAY, borderWidth: 0.5, borderColor: BORDER },
   resultHeaderCell: { padding: 4, fontFamily: "Helvetica-Bold", fontSize: 8, borderRightWidth: 0.5, borderRightColor: BORDER },
   resultRow: { flexDirection: "row", backgroundColor: BODY_BLUE, borderLeftWidth: 0.5, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: BORDER },
   // The last data row previously had no bottom border, leaving the whole
@@ -86,9 +87,9 @@ const styles = StyleSheet.create({
   colComment: { width: "36.8%" },
   colImage: { width: "16.5%" },
 
-  resultsRows: { width: "94%", marginBottom: 10 },
+  resultsRows: { width: "100%", marginBottom: 10 },
 
-  commentsBlock: { width: "94%", backgroundColor: COMMENTS_GRAY, borderWidth: 0.5, borderColor: BORDER, padding: 8, minHeight: 60, marginBottom: 10 },
+  commentsBlock: { width: "100%", backgroundColor: COMMENTS_GRAY, borderWidth: 0.5, borderColor: BORDER, padding: 8, minHeight: 60, marginBottom: 10 },
 
   imagesBar: {
     backgroundColor: IMAGES_PEACH,
