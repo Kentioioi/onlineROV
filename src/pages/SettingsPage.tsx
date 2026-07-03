@@ -78,6 +78,13 @@ export function SettingsPage() {
           <FieldOptionsCard key={fieldKey} fieldKey={fieldKey} />
         ))}
       </div>
+      {/* Which build is this device actually running? PWA updates lag
+          behind deploys, so this is the ground truth when debugging
+          "I still see the old behavior" - compare against the latest
+          deploy time in Netlify. */}
+      <p className="text-xs text-muted-foreground">
+        App-versjon: bygget {new Date(__BUILD_TIME__).toLocaleString("nb-NO")}
+      </p>
     </div>
   );
 }

@@ -87,6 +87,11 @@ export default defineConfig({
       },
     }),
   ],
+  // Shown in Innstillinger so it's always possible to tell which build a
+  // device is actually running (PWA updates lag behind deploys).
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
