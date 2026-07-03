@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { AutoGrowTextarea } from "@/components/form/AutoGrowTextarea";
 import { CreatableCombobox } from "@/components/form/CreatableCombobox";
 import { SelectField } from "@/components/form/SelectField";
 import { NumericUnitField } from "@/components/form/NumericUnitField";
@@ -644,7 +644,7 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
             <Controller
               control={control}
               name="comments"
-              render={({ field }) => <Textarea rows={5} {...field} />}
+              render={({ field }) => <AutoGrowTextarea rows={5} className="min-h-28" {...field} />}
             />
             <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setMaskebruddOpen(true)}>
               <PlusCircle className="h-4 w-4" /> Legg til maskebrudd

@@ -1,8 +1,8 @@
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { AutoGrowTextarea } from "@/components/form/AutoGrowTextarea";
 import { SelectField } from "@/components/form/SelectField";
 import {
   CATEGORY_LABELS,
@@ -94,7 +94,16 @@ export function InspectionResultsSection({
                     </Button>
                   )}
                 </div>
-                <Input value={row.comment} onChange={(e) => onChange(category, { comment: e.target.value })} />
+                {/* Auto-growing textarea, not a single-line Input: a long
+                    comment used to scroll sideways inside one invisible
+                    line instead of wrapping into view. Starts input-height,
+                    grows with content. */}
+                <AutoGrowTextarea
+                  rows={1}
+                  className="min-h-9 py-1.5"
+                  value={row.comment}
+                  onChange={(e) => onChange(category, { comment: e.target.value })}
+                />
               </div>
             </div>
           </div>
