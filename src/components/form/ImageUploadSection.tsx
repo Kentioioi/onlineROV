@@ -3,7 +3,6 @@ import { useDropzone } from "react-dropzone";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, CloudOff, ImageOff, Loader2, Upload, X } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ApiError, deleteImage, imageUrl, uploadImage } from "@/lib/api";
 import { compressImageForUpload } from "@/lib/compress-image";
@@ -44,7 +43,6 @@ export function ImageUploadSection({
   /** Lets the parent's navigation guard cover in-flight photo uploads. */
   onPendingCountChange?: (count: number) => void;
 }) {
-  const [active, setActive] = useState<ImageCategory>("liftup");
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const queryClient = useQueryClient();
 
@@ -187,51 +185,46 @@ export function ImageUploadSection({
     }
   }
 
+  // All six categories stacked for a full overview - tabs hid five of six
+  // categories and their two-row tab grid collided with the dropzone on
+  // phones.
   return (
-    <Tabs value={active} onValueChange={(v) => setActive(v as ImageCategory)}>
-      {/* Fixed 3-column grid instead of a squeezed flex row: six tabs sharing
-          one row on a phone left ~55px per tab, so the moment a count badge
-          appeared the (nowrap) labels overflowed invisibly - "categories
-          disappearing". A grid gives every tab the same guaranteed width. */}
-      <TabsList className="grid h-auto w-full grid-cols-3 gap-1 sm:grid-cols-6">
-        {IMAGE_CATEGORIES.map((cat) => {
-          const count = images.filter((i) => i.category === cat).length;
-          return (
-            <TabsTrigger key={cat} value={cat} className="gap-1.5 py-1.5">
-              <span className="truncate">{CATEGORY_LABELS[cat]}</span>
+    <div className="space-y-5">
+      {IMAGE_CATEGORIES.map((cat) => {
+        const count = images.filter((i) => i.category === cat).length;
+        return (
+          <section key={cat}>
+            <div className="mb-1.5 flex items-center gap-2">
+              <h4 className="text-sm font-medium">{CATEGORY_LABELS[cat]}</h4>
               {count > 0 && (
                 <Badge variant="secondary" className="px-1.5 text-[10px]">
                   {count}
                 </Badge>
               )}
-            </TabsTrigger>
-          );
-        })}
-      </TabsList>
-      {IMAGE_CATEGORIES.map((cat) => (
-        <TabsContent key={cat} value={cat}>
-          <CategoryDropzone
-            category={cat}
-            images={images.filter((i) => i.category === cat)}
-            pending={pending.filter((p) => p.category === cat)}
-            onDrop={(files) =>
-              // handleDrop is a floating promise (dropzone callback) - a
-              // rejection anywhere inside would otherwise vanish as an
-              // unhandled rejection with tiles stuck on their spinner.
-              void handleDrop(cat, files).catch(() => {
-                toast.error("Noe gikk galt under behandling av bildene - prøv igjen.");
-                setPending((prev) =>
-                  prev.map((p) => (p.category === cat && p.status === "uploading" ? { ...p, status: "failed" } : p)),
-                );
-              })
-            }
-            onDelete={handleDelete}
-            onDismissPending={dismissPending}
-            localPreviews={localPreviews.current}
-          />
-        </TabsContent>
-      ))}
-    </Tabs>
+            </div>
+            <CategoryDropzone
+              category={cat}
+              images={images.filter((i) => i.category === cat)}
+              pending={pending.filter((p) => p.category === cat)}
+              onDrop={(files) =>
+                // handleDrop is a floating promise (dropzone callback) - a
+                // rejection anywhere inside would otherwise vanish as an
+                // unhandled rejection with tiles stuck on their spinner.
+                void handleDrop(cat, files).catch(() => {
+                  toast.error("Noe gikk galt under behandling av bildene - prøv igjen.");
+                  setPending((prev) =>
+                    prev.map((p) => (p.category === cat && p.status === "uploading" ? { ...p, status: "failed" } : p)),
+                  );
+                })
+              }
+              onDelete={handleDelete}
+              onDismissPending={dismissPending}
+              localPreviews={localPreviews.current}
+            />
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
@@ -296,12 +289,12 @@ function CategoryDropzone({
     <div className="space-y-3">
       <div
         {...getRootProps()}
-        className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center text-sm text-muted-foreground transition-colors ${
+        className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed p-4 text-center text-sm text-muted-foreground transition-colors ${
           isDragActive ? "border-[#12a5c9] bg-[#12a5c9]/5" : "border-muted-foreground/25"
         }`}
       >
         <input {...getInputProps()} />
-        <Upload className="h-6 w-6" />
+        <Upload className="h-5 w-5" />
         <p>Dra og slipp bilder her, eller klikk for å velge filer</p>
       </div>
 
