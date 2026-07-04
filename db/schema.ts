@@ -14,6 +14,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { FieldKey } from "../shared/constants.js";
 
 // The 5 fixed inspection categories (never dynamic - mirrors rov_inspector/constants.py
 // CATEGORIES where in_results=True). "not" = net wall, kept as the real Norwegian key.
@@ -40,21 +41,6 @@ export const imageCategoryEnum = pgEnum("image_category", [
 // this one table (see plan: "field_options replaces both hardcoded enum and
 // auto-derived autosuggest"). Seed rows and user-added rows are identical -
 // all equally deletable, no "system default" flag.
-export const fieldKeyEnum = pgEnum("field_key", [
-  "location",
-  "vessel",
-  "project_leader",
-  "rov_operator",
-  "merd_type",
-  "reason",
-  "current_strength",
-  "visibility",
-  "wild_fish",
-  "growth",
-  "condition",
-  "escalation_contact",
-  "condition_unchecked", // appended last - Postgres enum values are append-only via ALTER TYPE
-]);
 
 export const reports = pgTable("reports", {
   // Client-generated (crypto.randomUUID()) at "New report" time, not server
@@ -138,7 +124,9 @@ export const fieldOptions = pgTable(
   "field_options",
   {
     id: serial("id").primaryKey(),
-    fieldKey: fieldKeyEnum("field_key").notNull(),
+    // Plain text, not a pg enum - valid keys are enforced app-side (FIELD_KEYS
+    // zod enum); a pg enum made every new category a transaction-hazard migration.
+    fieldKey: text("field_key").$type<FieldKey>().notNull(),
     value: text("value").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
