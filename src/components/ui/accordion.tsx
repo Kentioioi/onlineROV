@@ -64,9 +64,15 @@ function AccordionContent({
       className="overflow-hidden text-sm data-open:animate-accordion-down data-closed:animate-accordion-up"
       {...props}
     >
+      {/* No h-(--radix-accordion-content-height) here: that var is measured
+          once when the section opens, and pinning the wrapper to it clipped
+          anything that grew afterwards (auto-growing comment fields, added
+          photo rows) behind the parent's overflow-hidden - including the
+          buttons below. The open/close animation on the parent still uses
+          the var; while open, height must stay auto. */}
       <div
         className={cn(
-          "h-(--radix-accordion-content-height) pt-0 pb-2.5 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
+          "pt-0 pb-2.5 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
           className
         )}
       >

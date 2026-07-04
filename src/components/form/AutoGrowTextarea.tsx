@@ -21,6 +21,7 @@ export function AutoGrowTextarea({
   className,
   value,
   maxHeight = 320,
+  ref: forwardedRef,
   ...props
 }: React.ComponentProps<"textarea"> & { maxHeight?: number }) {
   const ref = React.useRef<HTMLTextAreaElement>(null);
@@ -44,7 +45,16 @@ export function AutoGrowTextarea({
 
   return (
     <Textarea
-      ref={ref}
+      // Merged ref: callers like react-hook-form's Controller spread their
+      // own ref in via {...field} - if it simply overwrote ours (spread
+      // order), the measuring effect held null and the field silently
+      // stopped growing everywhere CSS field-sizing isn't supported (iOS
+      // Safari), which is exactly the browser this component exists for.
+      ref={(el) => {
+        ref.current = el;
+        if (typeof forwardedRef === "function") forwardedRef(el);
+        else if (forwardedRef) forwardedRef.current = el;
+      }}
       value={value}
       className={cn("resize-none", className)}
       {...props}
