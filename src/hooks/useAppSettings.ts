@@ -5,7 +5,9 @@ import { listAppSettings, putAppSetting } from "@/lib/api";
 import { cacheAppSettings, getCachedAppSettings } from "@/offline/db";
 import {
   builtinInspectionDefault,
+  fieldDefaultKey,
   inspectionDefaultKey,
+  type FieldKey,
   type InspectionCategory,
   type InspectionDefaultField,
   type InspectionDefaultState,
@@ -43,13 +45,40 @@ export function useInspectionDefaults() {
   const overrides = useMemo(() => new Map((query.data?.items ?? []).map((i) => [i.key, i.value])), [query.data]);
 
   function getDefault(state: InspectionDefaultState, fieldName: InspectionDefaultField, category: InspectionCategory): string {
-    const stored = overrides.get(inspectionDefaultKey(state, fieldName, category));
-    return stored ?? builtinInspectionDefault(state, fieldName, category);
+    const perCategory = overrides.get(inspectionDefaultKey(state, fieldName, category));
+    if (perCategory !== undefined) return perCategory;
+
+    // "condition" has an extra fallback rung: the set-wide starred standard
+    // value from the Tilstand card in Settings (fieldDefaultKey), which sits
+    // between the per-category override above and the hardcoded builtin
+    // below. "comment" has no such set-wide concept, so it skips straight to
+    // the builtin.
+    if (fieldName === "condition") {
+      const setWide = overrides.get(fieldDefaultKey(state === "checked" ? "condition" : "condition_unchecked"));
+      if (setWide) return setWide;
+    }
+
+    return builtinInspectionDefault(state, fieldName, category);
   }
 
   const isReady = query.isSuccess || query.isError;
 
   return { getDefault, isReady };
+}
+
+// Starred standard values per dropdown field ("Sett som standard" in
+// Settings) - null when no standard is chosen.
+export function useFieldDefaults() {
+  const query = useAppSettings();
+  const overrides = useMemo(() => new Map((query.data?.items ?? []).map((i) => [i.key, i.value])), [query.data]);
+
+  function getFieldDefault(fieldKey: FieldKey): string | null {
+    return overrides.get(fieldDefaultKey(fieldKey)) ?? null;
+  }
+
+  const isReady = query.isSuccess || query.isError;
+
+  return { getFieldDefault, isReady };
 }
 
 export function usePutAppSetting() {

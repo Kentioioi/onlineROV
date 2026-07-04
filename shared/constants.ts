@@ -132,5 +132,14 @@ export const FIELD_KEY_LABELS: Record<FieldKey, string> = {
   escalation_contact: "Kontakt ved rømningsfare",
 };
 
+// Fields whose Settings chips can be starred as the standard (prefilled)
+// value for new reports. escalation_contact is not a form input, so a
+// default would be meaningless there.
+export const DEFAULTABLE_FIELD_KEYS: FieldKey[] = FIELD_KEYS.filter((k) => k !== "escalation_contact");
+
+export function fieldDefaultKey(fieldKey: FieldKey): string {
+  return `default_field_${fieldKey}`;
+}
+
 export const MAX_IMAGE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB original, before server-side resize
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/heic", "image/webp"];

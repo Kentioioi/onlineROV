@@ -21,13 +21,14 @@ import { MaskebruddDialog } from "@/components/form/MaskebruddDialog";
 import { ApiError, createReport, downloadPdf, generatePdf, getReport, updateReport, type ReportDetail } from "@/lib/api";
 import { deleteOutboxReport } from "@/offline/db";
 import { queueReportForSync, syncNow } from "@/offline/syncManager";
-import { useInspectionDefaults } from "@/hooks/useAppSettings";
+import { useFieldDefaults, useInspectionDefaults } from "@/hooks/useAppSettings";
 import {
   CHECKED_COMMENT_DEFAULTS,
   CHECKED_CONDITION_DEFAULT,
   DEFAULT_COMMENTS_TEXT,
   INSPECTION_CATEGORIES,
   builtinInspectionDefault,
+  type FieldKey,
   type InspectionCategory,
   type InspectionDefaultField,
   type InspectionDefaultState,
@@ -92,31 +93,34 @@ class FormValidationError extends Error {
 // getDefault defaults to the hardcoded builtins (used for useForm's initial
 // mount, before the app_settings query can possibly have resolved) - the
 // create-mode effect below re-calls this with the real resolver once ready.
+// getFieldDefault likewise defaults to "no starred standard value" so the
+// initial mount doesn't need the app_settings query either.
 function emptyDefaults(
   getDefault: (state: InspectionDefaultState, fieldName: InspectionDefaultField, category: InspectionCategory) => string = builtinInspectionDefault,
+  getFieldDefault: (fieldKey: FieldKey) => string | null = () => null,
 ): FormValues {
   return {
     id: crypto.randomUUID(),
     date: todayIso(),
-    vessel: "",
+    vessel: getFieldDefault("vessel") ?? "",
     timeFrom: "",
     timeTo: "",
-    projectLeader: "",
-    location: "",
-    rovOperator: "",
-    reason: "",
+    projectLeader: getFieldDefault("project_leader") ?? "",
+    location: getFieldDefault("location") ?? "",
+    rovOperator: getFieldDefault("rov_operator") ?? "",
+    reason: getFieldDefault("reason") ?? "",
     merdNumber: "",
-    merdType: "",
+    merdType: getFieldDefault("merd_type") ?? "",
     sizeX: "",
     sizeY: "",
     depth: "",
     deadFishCount: "",
     deadFishApprox: false,
-    currentStrength: "",
-    visibility: "",
-    wildFish: "",
+    currentStrength: getFieldDefault("current_strength") ?? "",
+    visibility: getFieldDefault("visibility") ?? "",
+    wildFish: getFieldDefault("wild_fish") ?? "",
     wildFishNote: "",
-    growth: "",
+    growth: getFieldDefault("growth") ?? "",
     comments: DEFAULT_COMMENTS_TEXT,
     inspectionResults: INSPECTION_CATEGORIES.map((category) => ({
       category,
@@ -208,6 +212,7 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
   });
 
   const { getDefault, isReady: defaultsReady } = useInspectionDefaults();
+  const { getFieldDefault, isReady: fieldDefaultsReady } = useFieldDefaults();
 
   const { control, getValues, watch, setValue, reset, formState } = useForm<FormValues>({
     defaultValues: emptyDefaults(),
@@ -282,14 +287,15 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
     if (
       mode === "create" &&
       defaultsReady &&
+      fieldDefaultsReady &&
       !appliedDynamicDefaults.current &&
       !formState.isDirty &&
       !savedId
     ) {
       appliedDynamicDefaults.current = true;
-      reset(emptyDefaults(getDefault), { keepDefaultValues: false });
+      reset(emptyDefaults(getDefault, getFieldDefault), { keepDefaultValues: false });
     }
-  }, [mode, defaultsReady, formState.isDirty, savedId, getDefault, reset]);
+  }, [mode, defaultsReady, fieldDefaultsReady, formState.isDirty, savedId, getDefault, getFieldDefault, reset]);
 
   const persist = useCallback(async (): Promise<{ id: string; reportNumber: number | null; offline: boolean }> => {
     const values = getValues();

@@ -127,7 +127,9 @@ export function formatMaskebruddText(v: MaskebruddInput): string {
 
 // app_settings write contract - keys are a closed set (per-category
 // inspection defaults), so a typo'd or malicious key can never be stored.
-export const appSettingKeyRegex = /^insp_(checked|unchecked)_(condition|comment)_(liftup|lodd|bunn|not|opphalere)$/;
+// default_field_* stores the starred standard value per dropdown.
+export const appSettingKeyRegex =
+  /^(insp_(checked|unchecked)_(condition|comment)_(liftup|lodd|bunn|not|opphalere)|default_field_(location|vessel|project_leader|rov_operator|merd_type|reason|current_strength|visibility|wild_fish|growth|condition|condition_unchecked))$/;
 export const appSettingInputSchema = z.object({
   value: z.string().max(500),
 });
