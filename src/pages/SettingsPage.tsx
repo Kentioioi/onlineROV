@@ -162,25 +162,20 @@ function FieldOptionsCard({ fieldKey }: { fieldKey: FieldKey }) {
   );
 }
 
-// Merges the old separate "Tilstand" / "Tilstand (ikke sjekket)" cards into
-// one card with a Sjekket/Ikke sjekket segmented toggle, mirroring the
-// report form's own Sjekket checkbox that swaps between the same two
-// field_options sets.
-function TilstandCard() {
-  const [activeState, setActiveState] = useState<InspectionDefaultState>("checked");
+// The Tilstand value list (the two field_options sets condition /
+// condition_unchecked). Controlled by the shared inspection-results
+// Sjekket/Ikke sjekket toggle - it lives inside that section, not among
+// the plain dropdown-field cards, since it's an inspection-results concept.
+function TilstandCard({ activeState }: { activeState: InspectionDefaultState }) {
   const activeFieldKey: FieldKey = activeState === "checked" ? "condition" : "condition_unchecked";
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-base">Tilstand</CardTitle>
-        <StateToggle activeState={activeState} onChange={setActiveState} />
+      <CardHeader>
+        <CardTitle className="text-base">Tilstand - mulige verdier</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent>
         <FieldOptionsBody fieldKey={activeFieldKey} />
-        <p className="text-xs text-muted-foreground">
-          {activeState === "checked" ? "Vises i skjemaet når «Sjekket» er på" : "Vises i skjemaet når «Sjekket» er av"}
-        </p>
       </CardContent>
     </Card>
   );
@@ -311,23 +306,30 @@ export function SettingsPage() {
           kan slettes eller legges til her.
         </p>
       </div>
+      {/* Plain dropdown-field value lists only. Tilstand (an inspection-
+          results concept) used to sit here too and read as a stray card -
+          it now lives in the inspection-results section below. */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {FIELD_KEYS.filter((fieldKey) => fieldKey !== "condition_unchecked").map((fieldKey) =>
-          fieldKey === "condition" ? <TilstandCard key={fieldKey} /> : <FieldOptionsCard key={fieldKey} fieldKey={fieldKey} />,
-        )}
+        {FIELD_KEYS.filter((fieldKey) => fieldKey !== "condition" && fieldKey !== "condition_unchecked").map((fieldKey) => (
+          <FieldOptionsCard key={fieldKey} fieldKey={fieldKey} />
+        ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* Inspection-results settings, all under ONE Sjekket/Ikke sjekket
+          toggle (mirrors the report form's Sjekket checkbox): the Tilstand
+          value list plus the per-category default Tilstand/Kommentar. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
         <div>
-          <h2 className="text-base font-semibold">Standardverdier for inspeksjonsresultater</h2>
+          <h2 className="text-base font-semibold">Inspeksjonsresultater</h2>
           <p className="text-sm text-muted-foreground">
             {inspectionDefaultsState === "checked"
-              ? "Verdiene som fylles ut når «Sjekket» er på i skjemaet."
-              : "Verdiene som fylles ut når «Sjekket» er av i skjemaet."}
+              ? "Verdier og standardtekst når «Sjekket» er på i skjemaet."
+              : "Verdier og standardtekst når «Sjekket» er av i skjemaet."}
           </p>
         </div>
         <StateToggle activeState={inspectionDefaultsState} onChange={setInspectionDefaultsState} />
       </div>
+      <TilstandCard activeState={inspectionDefaultsState} />
       <div className="grid gap-4 lg:grid-cols-2">
         {INSPECTION_CATEGORIES.map((category) => (
           <InspectionDefaultsCard key={category} category={category} activeState={inspectionDefaultsState} />
