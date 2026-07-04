@@ -89,7 +89,6 @@ export const FIELD_KEYS = [
   "growth",
   "condition",
   "condition_unchecked",
-  "escalation_contact",
 ] as const;
 export type FieldKey = (typeof FIELD_KEYS)[number];
 
@@ -113,7 +112,6 @@ export const SELECT_ONLY_FIELD_KEYS: FieldKey[] = [
   "growth",
   "condition",
   "condition_unchecked",
-  "escalation_contact",
 ];
 
 export const FIELD_KEY_LABELS: Record<FieldKey, string> = {
@@ -129,13 +127,11 @@ export const FIELD_KEY_LABELS: Record<FieldKey, string> = {
   growth: "Groe",
   condition: "Tilstand",
   condition_unchecked: "Tilstand (ikke sjekket)",
-  escalation_contact: "Kontakt ved rømningsfare",
 };
 
 // Fields whose Settings chips can be starred as the standard (prefilled)
-// value for new reports. escalation_contact is not a form input, so a
-// default would be meaningless there.
-export const DEFAULTABLE_FIELD_KEYS: FieldKey[] = FIELD_KEYS.filter((k) => k !== "escalation_contact");
+// value for new reports - every dropdown/combobox field qualifies.
+export const DEFAULTABLE_FIELD_KEYS: FieldKey[] = [...FIELD_KEYS];
 
 export function fieldDefaultKey(fieldKey: FieldKey): string {
   return `default_field_${fieldKey}`;
