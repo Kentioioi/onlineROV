@@ -5,7 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAddFieldOption, useDeleteFieldOption, useFieldOptionRows } from "@/hooks/useFieldOptions";
-import { FIELD_KEYS, FIELD_KEY_LABELS, type FieldKey } from "../../shared/constants";
+import { FIELD_KEY_LABELS, type FieldKey } from "../../shared/constants";
+
+// Grouped to mirror the report form's sections - the user looks for values
+// under the same heading they see while filling out a report ("where are
+// the Inspeksjonsresultater values?" -> under that exact heading here).
+const GROUPS: Array<{ heading: string; keys: FieldKey[] }> = [
+  { heading: "Grunnleggende informasjon", keys: ["location", "vessel", "project_leader", "rov_operator", "reason"] },
+  { heading: "Merdinformasjon", keys: ["merd_type", "current_strength", "visibility", "wild_fish", "growth"] },
+  { heading: "Inspeksjonsresultater", keys: ["condition", "condition_unchecked"] },
+  { heading: "Annet", keys: ["escalation_contact"] },
+];
 
 function FieldOptionsCard({ fieldKey }: { fieldKey: FieldKey }) {
   const { items } = useFieldOptionRows(fieldKey);
@@ -73,11 +83,16 @@ export function SettingsPage() {
           kan slettes eller legges til her.
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {FIELD_KEYS.map((fieldKey) => (
-          <FieldOptionsCard key={fieldKey} fieldKey={fieldKey} />
-        ))}
-      </div>
+      {GROUPS.map((group) => (
+        <div key={group.heading} className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">{group.heading}</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {group.keys.map((fieldKey) => (
+              <FieldOptionsCard key={fieldKey} fieldKey={fieldKey} />
+            ))}
+          </div>
+        </div>
+      ))}
       {/* Which build is this device actually running? PWA updates lag
           behind deploys, so this is the ground truth when debugging
           "I still see the old behavior" - compare against the latest
