@@ -28,7 +28,7 @@ export function onPendingChanged(cb: () => void): () => void {
 
 export { countPending };
 
-let syncing = false;
+let currentRun: Promise<void> | null = null;
 
 /**
  * Offline v1 only supports CREATING new reports (the boat use case) - an
@@ -40,12 +40,27 @@ let syncing = false;
  * force=true (the manual "Synkroniser nå" button) also retries records the
  * server permanently rejected (4xx); the automatic triggers skip those so a
  * doomed payload doesn't re-upload full photo blobs every 45 seconds.
+ *
+ * Concurrent calls piggyback on the active run and await its completion
+ * rather than returning immediately, so a caller like PDF generation that
+ * awaits syncNow() to drain queued photos still gets an "everything
+ * attempted" guarantee even if the 45s auto-sync is already mid-run.
  */
-export async function syncNow(options?: { force?: boolean }): Promise<void> {
-  const force = options?.force ?? false;
-  if (syncing) return;
-  if (typeof navigator !== "undefined" && !navigator.onLine) return;
-  syncing = true;
+export function syncNow(options?: { force?: boolean }): Promise<void> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return Promise.resolve();
+  // Chain a fresh pass after the active run rather than just awaiting it:
+  // the active run snapshotted its work list when it started, so anything
+  // queued since (the photo dropped right before "Generer PDF") would slip
+  // through a plain piggyback. Each concurrent caller adds at most one
+  // extra pass, and a pass with an empty outbox is nearly free.
+  if (currentRun) return currentRun.then(() => syncNow(options));
+  currentRun = runSync(options?.force ?? false).finally(() => {
+    currentRun = null;
+  });
+  return currentRun;
+}
+
+async function runSync(force: boolean): Promise<void> {
   try {
     const pendingReports = (await listPendingOutboxReports()).filter((r) => force || !r.permanentError);
     for (const record of pendingReports) {
@@ -64,7 +79,6 @@ export async function syncNow(options?: { force?: boolean }): Promise<void> {
     await uploadWithConcurrency(stranded);
     await cleanupSyncedOutbox();
   } finally {
-    syncing = false;
     notifyPendingChanged();
   }
 }
