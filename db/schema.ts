@@ -53,6 +53,7 @@ export const fieldKeyEnum = pgEnum("field_key", [
   "growth",
   "condition",
   "escalation_contact",
+  "condition_unchecked", // appended last - Postgres enum values are append-only via ALTER TYPE
 ]);
 
 export const reports = pgTable("reports", {

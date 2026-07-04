@@ -66,6 +66,7 @@ export const FIELD_KEYS = [
   "wild_fish",
   "growth",
   "condition",
+  "condition_unchecked",
   "escalation_contact",
 ] as const;
 export type FieldKey = (typeof FIELD_KEYS)[number];
@@ -89,6 +90,7 @@ export const SELECT_ONLY_FIELD_KEYS: FieldKey[] = [
   "wild_fish",
   "growth",
   "condition",
+  "condition_unchecked",
   "escalation_contact",
 ];
 
@@ -104,6 +106,7 @@ export const FIELD_KEY_LABELS: Record<FieldKey, string> = {
   wild_fish: "Villfisk",
   growth: "Groe",
   condition: "Tilstand",
+  condition_unchecked: "Tilstand (ikke sjekket)",
   escalation_contact: "Kontakt ved rømningsfare",
 };
 

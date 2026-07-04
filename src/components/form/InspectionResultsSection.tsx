@@ -78,11 +78,13 @@ export function InspectionResultsSection({
             <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
               <div className="grid gap-1.5">
                 <Label className="text-xs text-muted-foreground">Tilstand</Label>
+                {/* Unchecked rows get their own user-editable Tilstand vocabulary
+                    (condition_unchecked) instead of a disabled N/A - the toggle()
+                    below still resets the value to each state's default when flipped. */}
                 <SelectField
-                  fieldKey="condition"
+                  fieldKey={row.checked ? "condition" : "condition_unchecked"}
                   value={row.condition}
                   onChange={(v) => onChange(category, { condition: v })}
-                  disabled={!row.checked}
                 />
               </div>
               <div className="grid gap-1.5">
