@@ -52,23 +52,40 @@ interface RovInspectorDb extends DBSchema {
     value: FieldOption;
     indexes: { fieldKey: string };
   };
+  app_settings_cache: {
+    key: string;
+    value: { key: string; value: string };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<RovInspectorDb>> | null = null;
 
 export function getOfflineDb(): Promise<IDBPDatabase<RovInspectorDb>> {
   if (!dbPromise) {
-    dbPromise = openDB<RovInspectorDb>("rov-inspector-offline", 1, {
+    dbPromise = openDB<RovInspectorDb>("rov-inspector-offline", 2, {
+      // Runs for BOTH a fresh install (no existing stores) and a v1->v2
+      // upgrade (first three stores already exist) - every creation must be
+      // guarded or the upgrade path throws "object store already exists".
       upgrade(db) {
-        const reports = db.createObjectStore("outbox_reports", { keyPath: "id" });
-        reports.createIndex("syncState", "syncState");
+        if (!db.objectStoreNames.contains("outbox_reports")) {
+          const reports = db.createObjectStore("outbox_reports", { keyPath: "id" });
+          reports.createIndex("syncState", "syncState");
+        }
 
-        const images = db.createObjectStore("outbox_images", { keyPath: "id" });
-        images.createIndex("reportId", "reportId");
-        images.createIndex("syncState", "syncState");
+        if (!db.objectStoreNames.contains("outbox_images")) {
+          const images = db.createObjectStore("outbox_images", { keyPath: "id" });
+          images.createIndex("reportId", "reportId");
+          images.createIndex("syncState", "syncState");
+        }
 
-        const options = db.createObjectStore("field_options_cache", { keyPath: "id" });
-        options.createIndex("fieldKey", "fieldKey");
+        if (!db.objectStoreNames.contains("field_options_cache")) {
+          const options = db.createObjectStore("field_options_cache", { keyPath: "id" });
+          options.createIndex("fieldKey", "fieldKey");
+        }
+
+        if (!db.objectStoreNames.contains("app_settings_cache")) {
+          db.createObjectStore("app_settings_cache", { keyPath: "key" });
+        }
       },
     });
     // A transiently failed open (e.g. storage pressure) must not be cached
@@ -174,6 +191,19 @@ export async function cacheFieldOptions(options: FieldOption[]): Promise<void> {
 export async function getCachedFieldOptions(): Promise<FieldOption[]> {
   const db = await getOfflineDb();
   return db.getAll("field_options_cache");
+}
+
+export async function cacheAppSettings(items: { key: string; value: string }[]): Promise<void> {
+  const db = await getOfflineDb();
+  const tx = db.transaction("app_settings_cache", "readwrite");
+  await tx.store.clear();
+  await Promise.all(items.map((i) => tx.store.put(i)));
+  await tx.done;
+}
+
+export async function getCachedAppSettings(): Promise<{ key: string; value: string }[]> {
+  const db = await getOfflineDb();
+  return db.getAll("app_settings_cache");
 }
 
 export async function countPending(): Promise<number> {

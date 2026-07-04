@@ -7,10 +7,8 @@ import { SelectField } from "@/components/form/SelectField";
 import {
   CATEGORY_LABELS,
   CHECKED_COMMENT_DEFAULTS,
-  CHECKED_CONDITION_DEFAULT,
   INSPECTION_CATEGORIES,
   UNCHECKED_COMMENT_DEFAULTS,
-  UNCHECKED_CONDITION_DEFAULT,
   type InspectionCategory,
 } from "../../../shared/constants";
 
@@ -21,41 +19,55 @@ export type FormInspectionResult = {
   comment: string;
 };
 
-function isTemplateComment(category: InspectionCategory, comment: string): boolean {
-  return comment === CHECKED_COMMENT_DEFAULTS[category] || comment === UNCHECKED_COMMENT_DEFAULTS[category];
-}
-
 export function InspectionResultsSection({
   results,
   onChange,
   imageCounts,
+  getDefault,
 }: {
   results: FormInspectionResult[];
   onChange: (category: InspectionCategory, patch: Partial<FormInspectionResult>) => void;
   imageCounts: Record<InspectionCategory, number>;
+  getDefault: (state: "checked" | "unchecked", fieldName: "condition" | "comment", category: InspectionCategory) => string;
 }) {
   return (
     <div className="space-y-4">
       {INSPECTION_CATEGORIES.map((category) => {
         const row = results.find((r) => r.category === category);
         if (!row) return null;
-        const dirty = !isTemplateComment(category, row.comment);
         const imageCount = imageCounts[category] ?? 0;
 
+        // A comment counts as "template" (not dirty) if it matches either
+        // the CURRENT resolved default (possibly user-customized via
+        // Settings) or the original hardcoded builtin - pre-existing reports
+        // whose comment text still holds the old builtin must keep counting
+        // as undirty even after the default is customized.
+        function isTemplateComment(comment: string): boolean {
+          return (
+            comment === getDefault("checked", "comment", category) ||
+            comment === getDefault("unchecked", "comment", category) ||
+            comment === CHECKED_COMMENT_DEFAULTS[category] ||
+            comment === UNCHECKED_COMMENT_DEFAULTS[category]
+          );
+        }
+
+        const dirty = !isTemplateComment(row.comment);
+
         function toggle(checked: boolean) {
+          const state = checked ? "checked" : "unchecked";
           const patch: Partial<FormInspectionResult> = {
             checked,
-            condition: checked ? CHECKED_CONDITION_DEFAULT : UNCHECKED_CONDITION_DEFAULT,
+            condition: getDefault(state, "condition", category),
           };
           if (!dirty) {
-            patch.comment = checked ? CHECKED_COMMENT_DEFAULTS[category] : UNCHECKED_COMMENT_DEFAULTS[category];
+            patch.comment = getDefault(state, "comment", category);
           }
           onChange(category, patch);
         }
 
         function resetToDefault() {
           onChange(category, {
-            comment: row!.checked ? CHECKED_COMMENT_DEFAULTS[category] : UNCHECKED_COMMENT_DEFAULTS[category],
+            comment: getDefault(row!.checked ? "checked" : "unchecked", "comment", category),
           });
         }
 

@@ -124,3 +124,10 @@ export function formatMaskebruddText(v: MaskebruddInput): string {
       : "";
   return `Maskebrudd: ${v.sizeX}x${v.sizeY}, Dybde: ${v.depth}m${escapeSuffix}`;
 }
+
+// app_settings write contract - keys are a closed set (per-category
+// inspection defaults), so a typo'd or malicious key can never be stored.
+export const appSettingKeyRegex = /^insp_(checked|unchecked)_(condition|comment)_(liftup|lodd|bunn|not|opphalere)$/;
+export const appSettingInputSchema = z.object({
+  value: z.string().max(500),
+});

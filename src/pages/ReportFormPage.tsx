@@ -21,12 +21,16 @@ import { MaskebruddDialog } from "@/components/form/MaskebruddDialog";
 import { ApiError, createReport, downloadPdf, generatePdf, getReport, updateReport, type ReportDetail } from "@/lib/api";
 import { deleteOutboxReport } from "@/offline/db";
 import { queueReportForSync, syncNow } from "@/offline/syncManager";
+import { useInspectionDefaults } from "@/hooks/useAppSettings";
 import {
   CHECKED_COMMENT_DEFAULTS,
   CHECKED_CONDITION_DEFAULT,
   DEFAULT_COMMENTS_TEXT,
   INSPECTION_CATEGORIES,
+  builtinInspectionDefault,
   type InspectionCategory,
+  type InspectionDefaultField,
+  type InspectionDefaultState,
 } from "../../shared/constants";
 import { reportInputSchema, softValidationWarnings, type ReportInput } from "../../shared/schema";
 import type { ReportImage } from "../../db/schema";
@@ -85,7 +89,12 @@ class FormValidationError extends Error {
   }
 }
 
-function emptyDefaults(): FormValues {
+// getDefault defaults to the hardcoded builtins (used for useForm's initial
+// mount, before the app_settings query can possibly have resolved) - the
+// create-mode effect below re-calls this with the real resolver once ready.
+function emptyDefaults(
+  getDefault: (state: InspectionDefaultState, fieldName: InspectionDefaultField, category: InspectionCategory) => string = builtinInspectionDefault,
+): FormValues {
   return {
     id: crypto.randomUUID(),
     date: todayIso(),
@@ -112,8 +121,8 @@ function emptyDefaults(): FormValues {
     inspectionResults: INSPECTION_CATEGORIES.map((category) => ({
       category,
       checked: true,
-      condition: CHECKED_CONDITION_DEFAULT,
-      comment: CHECKED_COMMENT_DEFAULTS[category],
+      condition: getDefault("checked", "condition", category),
+      comment: getDefault("checked", "comment", category),
     })),
   };
 }
@@ -198,6 +207,8 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
     enabled: mode === "edit" && !!routeId,
   });
 
+  const { getDefault, isReady: defaultsReady } = useInspectionDefaults();
+
   const { control, getValues, watch, setValue, reset, formState } = useForm<FormValues>({
     defaultValues: emptyDefaults(),
   });
@@ -256,6 +267,29 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
       setSavedId(reportQuery.data.id);
     }
   }, [mode, reportQuery.data, reset]);
+
+  // useForm's defaultValues is only read on first mount, and hooks can't be
+  // conditional - so instead of gating the render on defaultsReady, mount
+  // with the static builtin defaults and swap in the resolved (possibly
+  // user-customized) ones via reset() the moment they're ready. Runs at
+  // most once: guarded so it can't clobber an edit in progress, and
+  // keepDefaultValues stays false so isDirty is unaffected afterwards.
+  // Settings load fast, an offline hit resolves from the IndexedDB cache,
+  // and a failed fetch still counts as "ready" (falls back to builtins) -
+  // so this is at most a brief flash, never a stall.
+  const appliedDynamicDefaults = useRef(false);
+  useEffect(() => {
+    if (
+      mode === "create" &&
+      defaultsReady &&
+      !appliedDynamicDefaults.current &&
+      !formState.isDirty &&
+      !savedId
+    ) {
+      appliedDynamicDefaults.current = true;
+      reset(emptyDefaults(getDefault), { keepDefaultValues: false });
+    }
+  }, [mode, defaultsReady, formState.isDirty, savedId, getDefault, reset]);
 
   const persist = useCallback(async (): Promise<{ id: string; reportNumber: number | null; offline: boolean }> => {
     const values = getValues();
@@ -634,7 +668,12 @@ export function ReportFormPage({ mode }: { mode: "create" | "edit" }) {
         <AccordionItem value="results" className="rounded-lg border px-4">
           <AccordionTrigger>Inspeksjonsresultater</AccordionTrigger>
           <AccordionContent>
-            <InspectionResultsSection results={inspectionResults} onChange={updateResult} imageCounts={imageCounts} />
+            <InspectionResultsSection
+              results={inspectionResults}
+              onChange={updateResult}
+              imageCounts={imageCounts}
+              getDefault={getDefault}
+            />
           </AccordionContent>
         </AccordionItem>
 

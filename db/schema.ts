@@ -148,6 +148,14 @@ export const reportNumberCounter = pgTable(
   (t) => [check("report_number_counter_singleton", sql`${t.id} = 1`)],
 );
 
+// Single-value user-editable settings (per-category inspection defaults
+// etc.) - see shared/constants.ts inspectionDefaultKey() for the key shape.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export type Report = typeof reports.$inferSelect;
 export type NewReport = typeof reports.$inferInsert;
 export type InspectionResult = typeof inspectionResults.$inferSelect;
@@ -156,3 +164,4 @@ export type ReportImage = typeof reportImages.$inferSelect;
 export type NewReportImage = typeof reportImages.$inferInsert;
 export type FieldOption = typeof fieldOptions.$inferSelect;
 export type NewFieldOption = typeof fieldOptions.$inferInsert;
+export type AppSetting = typeof appSettings.$inferSelect;

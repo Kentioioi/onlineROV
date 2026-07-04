@@ -173,3 +173,13 @@ export function addFieldOption(fieldKey: FieldKey, value: string): Promise<Field
 export function deleteFieldOption(id: number): Promise<{ ok: true }> {
   return apiFetch(`/api/field-options/${id}`, { method: "DELETE" });
 }
+
+export type AppSettingItem = { key: string; value: string };
+
+export function listAppSettings(): Promise<{ items: AppSettingItem[] }> {
+  return apiFetch(`/api/settings`);
+}
+
+export function putAppSetting(key: string, value: string): Promise<{ key: string; value: string | null }> {
+  return apiFetch(`/api/settings/${encodeURIComponent(key)}`, { method: "PUT", body: JSON.stringify({ value }) });
+}

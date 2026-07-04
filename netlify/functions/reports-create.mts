@@ -89,6 +89,8 @@ export default async (req: Request) => {
     const resultRows = await tx
       .insert(inspectionResults)
       .values(
+        // Client sends resolved (possibly user-customized) defaults; these
+        // builtins only backstop blank payloads from old/offline clients.
         input.inspectionResults.map((r) => ({
           reportId: input.id,
           category: r.category,

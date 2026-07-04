@@ -46,6 +46,28 @@ export const UNCHECKED_COMMENT_DEFAULTS: Record<InspectionCategory, string> = {
 export const CHECKED_CONDITION_DEFAULT = "Ok";
 export const UNCHECKED_CONDITION_DEFAULT = "N/A";
 
+// Keys for user-editable per-category inspection defaults in app_settings.
+// The hardcoded maps above remain the fallback when no override is stored.
+export type InspectionDefaultState = "checked" | "unchecked";
+export type InspectionDefaultField = "condition" | "comment";
+
+export function inspectionDefaultKey(
+  state: InspectionDefaultState,
+  fieldName: InspectionDefaultField,
+  category: InspectionCategory,
+): string {
+  return `insp_${state}_${fieldName}_${category}`;
+}
+
+export function builtinInspectionDefault(
+  state: InspectionDefaultState,
+  fieldName: InspectionDefaultField,
+  category: InspectionCategory,
+): string {
+  if (fieldName === "condition") return state === "checked" ? CHECKED_CONDITION_DEFAULT : UNCHECKED_CONDITION_DEFAULT;
+  return state === "checked" ? CHECKED_COMMENT_DEFAULTS[category] : UNCHECKED_COMMENT_DEFAULTS[category];
+}
+
 // Prefilled starting text for the free-form Kommentarer/Avvik textarea on a
 // new report - a text default, not a dropdown option list, so it's not
 // subject to the "must be user-editable like field_options" rule (the user
