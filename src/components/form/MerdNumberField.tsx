@@ -41,7 +41,8 @@ export function MerdNumberField({
 
   return (
     <div className="flex gap-2">
-      <div className="flex overflow-hidden rounded-lg border border-input">
+      {/* shrink-0: the w-full Input next to this was squeezing the toggle and overflow-hidden clipped away the "R" button. */}
+      <div className="flex shrink-0 overflow-hidden rounded-lg border border-input">
         {PREFIXES.map((p) => (
           <Button
             key={p}
@@ -49,7 +50,7 @@ export function MerdNumberField({
             variant="ghost"
             disabled={disabled}
             className={cn(
-              "h-8 w-9 rounded-none px-0 text-sm",
+              "h-8 w-9 shrink-0 rounded-none px-0 text-sm",
               prefix === p && "bg-[#0b2540] text-white hover:bg-[#0b2540] hover:text-white",
             )}
             onClick={() => commit(p, digits)}
